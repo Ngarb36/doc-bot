@@ -18,13 +18,10 @@ export function verifyTelegramWebhook(
 ): boolean {
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET
   if (!secret || !secretHeader) return false
-  const expected = createHmac("sha256", "WebAppData")
-    .update(secret)
-    .digest()
-  const token = Buffer.from(secretHeader, "utf8")
-  const exp = Buffer.from(expected.toString("hex"), "utf8")
-  if (token.length !== exp.length) return false
-  return timingSafeEqual(token, exp)
+  const secretBuf = Buffer.from(secret, "utf8")
+  const headerBuf = Buffer.from(secretHeader, "utf8")
+  if (secretBuf.length !== headerBuf.length) return false
+  return timingSafeEqual(secretBuf, headerBuf)
 }
 
 // ── Rate limiting (in-memory, per chat) ───────────────────────────────────────
