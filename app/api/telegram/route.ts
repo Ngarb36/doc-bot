@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
   if (text === "/connect") {
     const token = await createConnectToken(chatId)
     const url = `${process.env.NEXTAUTH_URL}/connect?token=${token}`
-    await sendMessage(chatId, `🔗 *חיבור Google*\n\nלחץ על הקישור:\n${url}\n\n_תקף ל-10 דקות._`)
+    await sendMessage(chatId, `🔗 חיבור Google\n\nלחץ על הקישור:\n${url}\n\nתקף ל-10 דקות.`)
     return NextResponse.json({ ok: true })
   }
 
