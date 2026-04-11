@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
   const text = sanitizeInput(rawText)
 
   // ── Handle commands ──────────────────────────────────────────────────────
-  const cmd = text.split("@")[0].toLowerCase()
+  const cmd = text.trim().split(/[\s@]/)[0].toLowerCase()
 
   if (cmd === "/start") {
     await sendMessage(
