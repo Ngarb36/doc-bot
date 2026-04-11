@@ -41,7 +41,7 @@ export async function saveLink(params: {
 
   await notion.pages.create({
     parent: { database_id: LINKS_DB },
-    icon: { type: "emoji", emoji },
+    icon: { type: "emoji", emoji: emoji as any },
     properties: {
       Name: { title: [{ text: { content: title || url } }] },
       URL: { url },
