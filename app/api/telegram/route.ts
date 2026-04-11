@@ -68,7 +68,9 @@ export async function POST(req: NextRequest) {
   const text = sanitizeInput(rawText)
 
   // ── Handle commands ──────────────────────────────────────────────────────
-  if (text === "/start") {
+  const cmd = text.split("@")[0].toLowerCase()
+
+  if (cmd === "/start") {
     await sendMessage(
       chatId,
       `👋 שלום! אני *דוק*, העוזר האישי שלך.\n\n` +
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  if (text === "/connect") {
+  if (cmd === "/connect") {
     const token = await createConnectToken(chatId)
     const url = `${process.env.NEXTAUTH_URL}/connect?token=${token}`
     await sendMessage(chatId, `🔗 חיבור Google\n\nלחץ על הכפתור כדי להתחבר (תקף 10 דקות):`, {
@@ -95,7 +97,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  if (text === "/help") {
+  if (cmd === "/help") {
     await sendMessage(
       chatId,
       `*פקודות:*\n` +
