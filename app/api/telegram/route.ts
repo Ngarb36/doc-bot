@@ -7,7 +7,7 @@ import { handleIntent } from "@/lib/handlers"
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
 const BASE_URL = `https://api.telegram.org/bot${BOT_TOKEN}`
 
-async function sendMessage(chatId: number | string, text: string) {
+async function sendMessage(chatId: number | string, text: string, replyMarkup?: object) {
   await fetch(`${BASE_URL}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -16,6 +16,7 @@ async function sendMessage(chatId: number | string, text: string) {
       text,
       parse_mode: "Markdown",
       disable_web_page_preview: true,
+      ...(replyMarkup && { reply_markup: replyMarkup }),
     }),
   })
 }
@@ -88,7 +89,9 @@ export async function POST(req: NextRequest) {
   if (text === "/connect") {
     const token = await createConnectToken(chatId)
     const url = `${process.env.NEXTAUTH_URL}/connect?token=${token}`
-    await sendMessage(chatId, `🔗 חיבור Google\n\nלחץ על הקישור (תקף 10 דקות):\n\n${url}`)
+    await sendMessage(chatId, `🔗 חיבור Google\n\nלחץ על הכפתור כדי להתחבר (תקף 10 דקות):`, {
+      inline_keyboard: [[{ text: "התחבר עם Google 🔗", url }]]
+    })
     return NextResponse.json({ ok: true })
   }
 
