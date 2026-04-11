@@ -89,11 +89,28 @@ export async function POST(req: NextRequest) {
   }
 
   if (cmd === "/connect") {
-    const token = await createConnectToken(chatId)
-    const url = `${process.env.NEXTAUTH_URL}/connect?token=${token}`
-    await sendMessage(chatId, `🔗 חיבור Google\n\nלחץ על הכפתור כדי להתחבר (תקף 10 דקות):`, {
-      inline_keyboard: [[{ text: "התחבר עם Google 🔗", url }]]
-    })
+    console.log("[doc-bot] /connect command received for chatId:", chatId)
+    try {
+      const token = await createConnectToken(chatId)
+      const url = `${process.env.NEXTAUTH_URL}/connect?token=${token}`
+      console.log("[doc-bot] connect url:", url)
+      const res = await fetch(`${BASE_URL}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "🔗 חיבור Google - לחץ על הכפתור:",
+          reply_markup: JSON.stringify({
+            inline_keyboard: [[{ text: "התחבר עם Google", url }]]
+          })
+        }),
+      })
+      const tgRes = await res.json()
+      console.log("[doc-bot] telegram response:", JSON.stringify(tgRes))
+    } catch (e) {
+      console.error("[doc-bot] connect error:", e)
+      await sendMessage(chatId, "❌ שגיאה ביצירת קישור. נסה שוב.")
+    }
     return NextResponse.json({ ok: true })
   }
 
