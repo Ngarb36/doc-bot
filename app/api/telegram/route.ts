@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { isAllowedChat, verifyTelegramWebhook, checkRateLimit, sanitizeInput } from "@/lib/security"
-import { getUser, createConnectToken } from "@/lib/db"
+import { getUser, createConnectToken, getConversationHistory, appendConversationHistory } from "@/lib/db"
 import { routeMessage } from "@/lib/router"
 import { handleIntent } from "@/lib/handlers"
 
@@ -137,8 +137,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const user = await getUser(chatId)
-    const intent = await routeMessage(text, new Date())
+    const history = await getConversationHistory(chatId)
+    const intent = await routeMessage(text, new Date(), history)
     const reply = await handleIntent(intent, chatId, user?.refreshToken ?? null, text)
+    await appendConversationHistory(chatId, text, reply)
     await sendMessage(chatId, reply)
   } catch (err) {
     console.error("[doc-bot] error:", err)

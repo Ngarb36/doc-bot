@@ -26,9 +26,47 @@ export type Intent =
 
 const URL_REGEX = /https?:\/\/[^\s]+/gi
 
+const HEBREW_DAYS: Record<string, number> = {
+  "ראשון": 0, "שני": 1, "שלישי": 2, "רביעי": 3, "חמישי": 4, "שישי": 5, "שבת": 6
+}
+
+// Pre-process common Israeli date formats before sending to Claude
+function normalizeText(text: string, now: Date): string {
+  // Convert DD.MM or DD.MM.YY to full date description
+  return text.replace(/\b(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\b/g, (_, d, m, y) => {
+    const year = y ? (y.length === 2 ? 2000 + parseInt(y) : parseInt(y)) : now.getFullYear()
+    const month = parseInt(m)
+    const day = parseInt(d)
+    const date = new Date(year, month - 1, day)
+    return date.toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+  })
+}
+
+function getDateContext(now: Date): string {
+  const days = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"]
+  const dayName = days[now.getDay()]
+  const nextSunday = new Date(now)
+  nextSunday.setDate(now.getDate() + (7 - now.getDay()) % 7 || 7)
+
+  return `Current date/time: ${now.toISOString()}
+Day of week: יום ${dayName}
+Tomorrow: ${new Date(now.getTime() + 86400000).toISOString().split("T")[0]}
+Next Sunday: ${nextSunday.toISOString().split("T")[0]}
+Timezone: Asia/Jerusalem (UTC+3)
+
+Day name to day-of-week offset from today (${dayName}):
+${Object.entries(HEBREW_DAYS).map(([name, dow]) => {
+  const diff = (dow - now.getDay() + 7) % 7 || 7
+  const date = new Date(now.getTime() + diff * 86400000)
+  return `יום ${name} הקרוב = ${date.toISOString().split("T")[0]}`
+}).join("\n")}
+יום ראשון עוד שבוע = ${new Date(nextSunday.getTime() + 7 * 86400000).toISOString().split("T")[0]}`
+}
+
 export async function routeMessage(
   text: string,
-  now: Date
+  now: Date,
+  conversationHistory: { role: "user" | "assistant"; content: string }[] = []
 ): Promise<Intent> {
   // Quick checks before hitting Claude
   const urls = (text.match(URL_REGEX) || []).map((u) => u.replace(/[.,!?)]+$/, ""))
@@ -44,37 +82,49 @@ export async function routeMessage(
     return { action: "cancel_send_email" }
   }
 
-  const nowISO = now.toISOString()
+  const normalizedText = normalizeText(text, now)
+  const dateContext = getDateContext(now)
+
+  const messages: { role: "user" | "assistant"; content: string }[] = [
+    ...conversationHistory.slice(-4), // last 2 exchanges for context
+    { role: "user", content: normalizedText }
+  ]
+
   const response = await client.messages.create({
     model: "claude-haiku-4-5-20251001",
-    max_tokens: 400,
+    max_tokens: 500,
     system: `You are an intent classifier for a Hebrew/English personal assistant bot named Doc.
-Current time: ${nowISO} (Asia/Jerusalem timezone).
+${dateContext}
 Respond ONLY with valid JSON, no markdown.
 
 Available actions:
 - chat: general conversation or questions
-- create_event: {summary, start (ISO), end (ISO), attendees?: [emails], location?, description?}
+- create_event: {summary, start (ISO 8601 with time), end (ISO 8601 with time), attendees?: [emails], location?, description?}
 - list_events: {days: number}
-- add_reminder: {message: "the reminder text in Hebrew", remindAt: "ISO datetime string calculated from now", recurrence?: "daily"|"weekly"|"monthly"}
+- add_reminder: {message: "reminder text", remindAt: "ISO 8601 datetime", recurrence?: "daily"|"weekly"|"monthly"}
 - list_reminders: {}
-- add_task: {title, due?: ISO date}
+- add_task: {title, due?: "ISO date"}
 - list_tasks: {}
-- complete_task: {taskId: string} - only if user specifies a task ID
+- complete_task: {taskId: string}
 - search_drive: {query}
 - add_to_list: {listName, items: [strings]}
 - show_list: {listName}
 - clear_list: {listName}
 - read_emails: {count: 1-10}
-- send_email: {to (email or name to search), subject, body}
+- send_email: {to, subject, body}
 - search_contacts: {query}
 - connect_google: {}
 - unknown: {}
 
-For events without explicit end time, add 1 hour.
-For Hebrew dates/times like "מחר", "היום", "בשישי", "עוד שעה", "בעוד 30 דקות" - calculate actual ISO datetime from the current time ${nowISO}.
-"עוד שעה" = current time + 1 hour. "מחר" = tomorrow same time. Always return valid ISO strings.`,
-    messages: [{ role: "user", content: text }],
+IMPORTANT date rules:
+- Always use full ISO 8601 format with time: "2026-04-13T09:00:00+03:00"
+- If no end time given, add 1 hour to start
+- "עוד שעה" = now + 1 hour
+- "מחר" = tomorrow
+- Use the pre-calculated day dates above for Hebrew day names
+- If year not specified, use current year (${now.getFullYear()})
+- Default meeting time is 09:00 if only date given with no time`,
+    messages,
   })
 
   try {

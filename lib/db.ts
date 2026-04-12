@@ -153,6 +153,31 @@ export async function getUserLists(chatId: string | number): Promise<string[]> {
   return (await kv.smembers<string[]>(`lists:${chatId}`)) ?? []
 }
 
+// ── Conversation history ──────────────────────────────────────────────────────
+
+export interface ConversationMessage {
+  role: "user" | "assistant"
+  content: string
+}
+
+export async function getConversationHistory(chatId: string | number): Promise<ConversationMessage[]> {
+  return (await kv.get<ConversationMessage[]>(`history:${chatId}`)) ?? []
+}
+
+export async function appendConversationHistory(
+  chatId: string | number,
+  userMsg: string,
+  assistantMsg: string
+): Promise<void> {
+  const history = await getConversationHistory(chatId)
+  const updated = [
+    ...history,
+    { role: "user" as const, content: userMsg },
+    { role: "assistant" as const, content: assistantMsg },
+  ].slice(-10) // keep last 5 exchanges
+  await kv.set(`history:${chatId}`, updated, { ex: 3600 }) // 1 hour TTL
+}
+
 // ── Pending Gmail confirmations ───────────────────────────────────────────────
 
 export interface PendingEmail {
