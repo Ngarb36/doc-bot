@@ -156,7 +156,7 @@ export async function searchDrive(
   const res = await drive.files.list({
     q: `name contains '${query.replace(/'/g, "\\'")}' and trashed = false`,
     fields: "files(id, name, mimeType, webViewLink)",
-    pageSize: 5,
+    pageSize: 10,
     orderBy: "modifiedTime desc",
   })
 
