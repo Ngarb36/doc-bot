@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getUser(chatId)
     const intent = await routeMessage(text, new Date())
-    const reply = await handleIntent(intent, chatId, user?.refreshToken ?? null)
+    const reply = await handleIntent(intent, chatId, user?.refreshToken ?? null, text)
     await sendMessage(chatId, reply)
   } catch (err) {
     console.error("[doc-bot] error:", err)

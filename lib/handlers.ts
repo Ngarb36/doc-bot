@@ -47,7 +47,8 @@ const TYPE_EMOJI: Record<string, string> = {
 export async function handleIntent(
   intent: Intent,
   chatId: string | number,
-  refreshToken: string | null
+  refreshToken: string | null,
+  originalText = ""
 ): Promise<string> {
   const needsGoogle = [
     "create_event", "list_events", "add_task", "list_tasks", "complete_task",
@@ -80,6 +81,9 @@ export async function handleIntent(
     // ── Calendar ─────────────────────────────────────────────────────────────
     case "create_event": {
       const { summary, start, end, attendees, location, description } = intent
+      if (!start || !end || isNaN(new Date(start).getTime()) || isNaN(new Date(end).getTime())) {
+        return "❌ לא הצלחתי להבין את התאריך. נסה לציין תאריך ושעה מדויקים, למשל: 'מחר בשעה 10:00 למשך שעה'."
+      }
       const event = await createCalendarEvent(refreshToken!, { summary, start, end, attendees, location, description })
       const attendeeStr = attendees?.length ? `\n👥 *משתתפים:* ${attendees.join(", ")}` : ""
       return `✅ *אירוע נוצר!*\n📅 *${summary}*\n🕐 ${formatDate(start)} → ${formatDate(end)}${attendeeStr}\n🔗 ${event.htmlLink ?? ""}`
@@ -214,30 +218,20 @@ export async function handleIntent(
     }
 
     // ── Chat ──────────────────────────────────────────────────────────────────
-    case "chat": {
-      const { message } = intent
+    case "chat":
+    case "unknown":
+    default: {
+      const userMessage = "message" in intent && intent.message ? intent.message : originalText
+      if (!userMessage) return "שלום! במה אוכל לעזור?"
       const Anthropic = (await import("@anthropic-ai/sdk")).default
       const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
       const res = await ai.messages.create({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 1000,
         system: "אתה עוזר אישי בשם דוק. ענה בעברית אלא אם המשתמש כתב באנגלית. היה קצר, ברור וידידותי.",
-        messages: [{ role: "user", content: message }],
+        messages: [{ role: "user", content: userMessage }],
       })
       return res.content[0].type === "text" ? res.content[0].text : "לא הצלחתי לענות."
-    }
-
-    case "unknown":
-    default: {
-      const Anthropic2 = (await import("@anthropic-ai/sdk")).default
-      const ai2 = new Anthropic2({ apiKey: process.env.ANTHROPIC_API_KEY })
-      const res2 = await ai2.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 1000,
-        system: "אתה עוזר אישי בשם דוק. ענה בעברית אלא אם המשתמש כתב באנגלית. היה קצר, ברור וידידותי.",
-        messages: [{ role: "user", content: "message" in intent ? intent.message : String(intent) }],
-      })
-      return res2.content[0].type === "text" ? res2.content[0].text : "לא הצלחתי לענות."
     }
   }
 }
