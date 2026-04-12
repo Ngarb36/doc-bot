@@ -7,12 +7,13 @@ import {
   getConversationHistory, appendConversationHistory,
   getPendingEvent, savePendingEvent, deletePendingEvent,
   getReminder, updateReminder, deleteReminder,
+  getUserGroups,
 } from "@/lib/db"
 import { routeMessage } from "@/lib/router"
 import { handleIntent } from "@/lib/handlers"
 import { parseEventFromImage, buildISODateTimes } from "@/lib/event-parser"
 import { isReminderMessage, parseReminderText } from "@/lib/reminder-parser"
-import { createCalendarEvent, listUserCalendars } from "@/lib/google"
+import { createCalendarEvent, listUserCalendars, searchContacts } from "@/lib/google"
 import { addReminder } from "@/lib/db"
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
@@ -103,6 +104,17 @@ function calendarKeyboard(calendars: { id: string; name: string }[]) {
   }
 }
 
+// ── Invite confirmation keyboard ──────────────────────────────────────────────
+
+function inviteKeyboard() {
+  return {
+    inline_keyboard: [[
+      { text: "✅ כן", callback_data: "invite_yes" },
+      { text: "❌ לא", callback_data: "invite_no" },
+    ]],
+  }
+}
+
 // ── Callback query handler ────────────────────────────────────────────────────
 
 async function handleCallback(update: any) {
@@ -142,6 +154,36 @@ async function handleCallback(update: any) {
       await updateReminder(remId, { remindAt: newTime })
       await editMessage(chatId, messageId, `⏰ *תזכורת נדחתה לשעה*\n"${rem.message}"`)
     }
+    return
+  }
+
+  // ── Invite confirmation ─────────────────────────────────────────────────
+  if (data === "invite_yes" || data === "invite_no") {
+    const user = await getUser(chatId)
+    const pending = await getPendingEvent(chatId)
+    if (!user || !pending) {
+      await editMessage(chatId, messageId, "הפגישה פגה. נסה שוב.")
+      return
+    }
+    if (data === "invite_yes" && pending.suggestedAttendees?.length) {
+      pending.attendees = [
+        ...(pending.attendees ?? []),
+        ...pending.suggestedAttendees.map(a => a.email),
+      ]
+    }
+    pending.suggestedAttendees = undefined
+    await savePendingEvent(chatId, pending)
+    // Now show calendar picker
+    const calendars = await listUserCalendars(user.refreshToken)
+    pending.calendarIds = calendars.map(c => c.id)
+    await savePendingEvent(chatId, pending)
+    const { startDateTime } = buildISODateTimes(pending as any)
+    const attendeeStr = pending.attendees?.length ? `\n👥 ${pending.attendees.join(", ")}` : ""
+    const locationStr = pending.location ? `\n📍 ${pending.location}` : ""
+    await editMessage(chatId, messageId,
+      `📅 *${pending.title}*\n🗓 ${formatDate(startDateTime)}${locationStr}${attendeeStr}\n\nלאיזה יומן להוסיף?`,
+      calendarKeyboard(calendars)
+    )
     return
   }
 
@@ -235,6 +277,52 @@ async function confirmOrCreateEvent(chatId: number, parsed: any, refreshToken: s
   const text = `📅 *${parsed.title}*\n🗓 ${formatDate(startDateTime)}${locationStr}${attendeeStr}\n\nלאיזה יומן להוסיף?`
 
   await sendMessage(chatId, text, calendarKeyboard(calendars))
+}
+
+// ── Attendee resolution ───────────────────────────────────────────────────────
+// Checks groups and Google Contacts for names mentioned in event text
+
+async function resolveEventAttendees(
+  refreshToken: string,
+  chatId: number | string,
+  text: string,
+  summary: string
+): Promise<{ name: string; email: string }[]> {
+  const lower = text.toLowerCase()
+
+  // 1. Check if any saved group name appears in the text
+  try {
+    const groups = await getUserGroups(chatId)
+    for (const group of groups) {
+      if (lower.includes(group.name.toLowerCase()) && group.members.length > 0) {
+        return group.members
+      }
+    }
+  } catch { /* ignore */ }
+
+  // 2. Use Haiku to extract person names from the event text
+  try {
+    const Anthropic = (await import("@anthropic-ai/sdk")).default
+    const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const res = await ai.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 80,
+      system: "Extract person names from Hebrew event text. Return a JSON array of name strings only, e.g. [\"דני\",\"שי\"]. Return [] if no person names found. Do NOT include the event creator.",
+      messages: [{ role: "user", content: summary }],
+    })
+    const raw = res.content[0].type === "text" ? res.content[0].text.trim() : "[]"
+    const names: string[] = JSON.parse(raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim())
+    if (!names.length) return []
+
+    const found: { name: string; email: string }[] = []
+    for (const name of names) {
+      const contacts = await searchContacts(refreshToken, name)
+      if (contacts.length === 1) found.push(contacts[0])
+    }
+    return found
+  } catch {
+    return []
+  }
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -424,6 +512,23 @@ export async function POST(req: NextRequest) {
         const endTime   = end.slice(11, 16)             // "10:00"
 
         const parsed = { title: summary, date: datePart, startTime, endTime, location, attendees, description }
+
+        // Auto-detect attendees — only if router didn't already extract explicit emails
+        if (!attendees?.length) {
+          const suggestedAttendees = await resolveEventAttendees(user.refreshToken, chatId, text, summary)
+          if (suggestedAttendees.length > 0) {
+            await savePendingEvent(chatId, { ...parsed, suggestedAttendees, createdAt: Date.now() })
+            const nameList = suggestedAttendees.map(a => `*${a.name}*`).join(", ")
+            await sendMessage(chatId,
+              `📅 *${summary}*\n🗓 ${formatDate(`${datePart}T${startTime}:00`)}` +
+              (location ? `\n📍 ${location}` : "") +
+              `\n\nלזמן גם את ${nameList}?`,
+              inviteKeyboard()
+            )
+            return NextResponse.json({ ok: true })
+          }
+        }
+
         await confirmOrCreateEvent(chatId, parsed, user.refreshToken)
       } catch (e: any) {
         console.error("[doc-bot] create_event error:", e?.message ?? e)

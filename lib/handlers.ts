@@ -23,6 +23,9 @@ import {
   getPendingEmail,
   deletePendingEmail,
   createConnectToken,
+  saveGroup,
+  getUserGroups,
+  deleteGroup,
 } from "./db"
 import type { Intent } from "./router"
 
@@ -54,6 +57,7 @@ export async function handleIntent(
   const needsGoogle = [
     "create_event", "list_events", "add_task", "list_tasks", "complete_task",
     "search_drive", "read_emails", "send_email", "search_contacts", "confirm_send_email",
+    "create_group",
   ]
 
   if (needsGoogle.includes(intent.action) && !refreshToken) {
@@ -235,6 +239,44 @@ export async function handleIntent(
     case "cancel_send_email": {
       await deletePendingEmail(chatId)
       return "❌ שליחת המייל בוטלה."
+    }
+
+    // ── Groups ────────────────────────────────────────────────────────────────
+    case "create_group": {
+      const { groupName, memberNames } = intent
+      const contacts = await searchContacts(refreshToken!, memberNames.join(" "))
+      // Try to resolve each member name individually
+      const resolved: { name: string; email: string }[] = []
+      const unresolved: string[] = []
+      for (const memberName of memberNames) {
+        const results = await searchContacts(refreshToken!, memberName)
+        if (results.length === 1) {
+          resolved.push(results[0])
+        } else if (results.length > 1) {
+          // pick best match
+          const best = results.find(r => r.name.toLowerCase().includes(memberName.toLowerCase()))
+          if (best) resolved.push(best)
+          else unresolved.push(memberName)
+        } else {
+          unresolved.push(memberName)
+        }
+      }
+      await saveGroup(chatId, { name: groupName, members: resolved, createdAt: Date.now() })
+      const memberLines = resolved.map(m => `• ${m.name} (${m.email})`).join("\n")
+      const unresolvedStr = unresolved.length ? `\n\n⚠️ לא נמצאו: ${unresolved.join(", ")}` : ""
+      return `👥 *קבוצה נשמרה: "${groupName}"*\n\n${memberLines}${unresolvedStr}`
+    }
+
+    case "list_groups": {
+      const groups = await getUserGroups(chatId)
+      if (groups.length === 0) return "👥 אין קבוצות שמורות.\n\nכדי ליצור: \"צור קבוצה חברים מהלימודים עם דני, שי\""
+      const lines = groups.map(g => `*${g.name}* — ${g.members.map(m => m.name).join(", ")}`)
+      return `👥 *הקבוצות שלך:*\n\n${lines.join("\n")}`
+    }
+
+    case "delete_group": {
+      await deleteGroup(chatId, intent.groupName)
+      return `🗑 קבוצת "${intent.groupName}" נמחקה.`
     }
 
     // ── Connect ───────────────────────────────────────────────────────────────

@@ -23,6 +23,9 @@ export type Intent =
   | { action: "confirm_send_email" }
   | { action: "cancel_send_email" }
   | { action: "connect_google" }
+  | { action: "create_group"; groupName: string; memberNames: string[] }
+  | { action: "list_groups" }
+  | { action: "delete_group"; groupName: string }
   | { action: "unknown" }
 
 const URL_REGEX = /https?:\/\/[^\s]+/gi
@@ -179,6 +182,9 @@ Available actions:
 - send_email: {to, subject, body}
 - search_contacts: {query}
 - connect_google: {}
+- create_group: {groupName: "group name", memberNames: ["name1", "name2"]}
+- list_groups: {}
+- delete_group: {groupName: "group name"}
 - unknown: {}
 
 IMPORTANT date rules:
@@ -200,7 +206,10 @@ Intent classification hints (Hebrew):
 - "תשלח מייל / שלח מייל" → send_email
 - "תראה מיילים / מה יש במייל / מיילים אחרונים" → read_emails
 
-CRITICAL: "רשימת מטלות", "מטלות", "משימות", "tasks" always → add_task or list_tasks, NEVER chat.`,
+CRITICAL: "רשימת מטלות", "מטלות", "משימות", "tasks" always → add_task or list_tasks, NEVER chat.
+- "צור קבוצה / הוסף קבוצה" → create_group
+- "הצג קבוצות / מה הקבוצות" → list_groups
+- "מחק קבוצה" → delete_group`,
     messages,
   })
 

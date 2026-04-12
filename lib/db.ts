@@ -191,6 +191,7 @@ export interface PendingEvent {
   attendees?: string[]
   description?: string
   calendarIds?: string[]   // stored so callback only needs an index
+  suggestedAttendees?: { name: string; email: string }[]  // awaiting invite confirmation
   createdAt: number
 }
 
@@ -230,4 +231,34 @@ export async function getPendingEmail(
 
 export async function deletePendingEmail(chatId: string | number): Promise<void> {
   await kv.del(`${P}pending_email:${chatId}`)
+}
+
+// ── Contact Groups ─────────────────────────────────────────────────────────────
+
+export interface ContactGroup {
+  name: string
+  members: { name: string; email: string }[]
+  createdAt: number
+}
+
+export async function saveGroup(chatId: string | number, group: ContactGroup): Promise<void> {
+  const key = `${P}group:${chatId}:${group.name.toLowerCase()}`
+  await kv.set(key, group)
+  await kv.sadd(`${P}groups:${chatId}`, group.name.toLowerCase())
+}
+
+export async function getGroup(chatId: string | number, groupName: string): Promise<ContactGroup | null> {
+  return kv.get<ContactGroup>(`${P}group:${chatId}:${groupName.toLowerCase()}`)
+}
+
+export async function getUserGroups(chatId: string | number): Promise<ContactGroup[]> {
+  const names = await kv.smembers<string[]>(`${P}groups:${chatId}`)
+  if (!names || names.length === 0) return []
+  const groups = await Promise.all(names.map((n) => kv.get<ContactGroup>(`${P}group:${chatId}:${n}`)))
+  return groups.filter((g): g is ContactGroup => g !== null)
+}
+
+export async function deleteGroup(chatId: string | number, groupName: string): Promise<void> {
+  await kv.del(`${P}group:${chatId}:${groupName.toLowerCase()}`)
+  await kv.srem(`${P}groups:${chatId}`, groupName.toLowerCase())
 }
