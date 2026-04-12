@@ -230,9 +230,9 @@ export async function handleIntent(
       const Anthropic = (await import("@anthropic-ai/sdk")).default
       const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
       const res = await ai.messages.create({
-        model: "claude-haiku-4-5-20251001",
+        model: "claude-sonnet-4-6",
         max_tokens: 1000,
-        system: "אתה עוזר אישי בשם דוק. ענה בעברית אלא אם המשתמש כתב באנגלית. היה קצר, ברור וידידותי.",
+        system: "אתה עוזר אישי בשם דוק. ענה תמיד בעברית תקינה וטבעית, אלא אם המשתמש כתב באנגלית. היה קצר, ברור וידידותי.",
         messages: [{ role: "user", content: userMessage }],
       })
       return res.content[0].type === "text" ? res.content[0].text : "לא הצלחתי לענות."
