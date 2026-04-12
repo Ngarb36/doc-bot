@@ -8,7 +8,7 @@ import {
 } from "@/lib/db"
 import { routeMessage } from "@/lib/router"
 import { handleIntent } from "@/lib/handlers"
-import { parseEventFromText, parseEventFromImage, buildISODateTimes } from "@/lib/event-parser"
+import { parseEventFromImage, buildISODateTimes } from "@/lib/event-parser"
 import { isReminderMessage, parseReminderText } from "@/lib/reminder-parser"
 import { createCalendarEvent, listUserCalendars } from "@/lib/google"
 import { addReminder } from "@/lib/db"
@@ -406,40 +406,41 @@ export async function POST(req: NextRequest) {
     const history = await getConversationHistory(chatId)
     const intent = await routeMessage(text, new Date(), history)
 
-    // Intercept create_event to use the parser + calendar selection
+    // Intercept create_event — use the router's already-extracted data directly
+    // (avoids a second Anthropic call and prevents Vercel timeout)
     if (intent.action === "create_event" && user) {
       try {
-        const todayISO = new Date().toISOString()
-        const parsed = await parseEventFromText(text, todayISO)
+        const { summary, start, end, attendees, location, description } = intent
 
-        if (parsed.clarificationNeeded) {
-          await savePendingEvent(chatId, {
-            title: parsed.title,
-            date: parsed.date,
-            startTime: parsed.startTime,
-            endTime: parsed.endTime,
-            location: parsed.location,
-            attendees: parsed.attendees,
-            description: parsed.description,
-            createdAt: Date.now(),
-          })
-          await sendMessage(chatId, `📅 זיהיתי: *${parsed.title || "אירוע"}*\n\n${parsed.clarificationNeeded}`)
+        // Validate dates from router
+        if (!start || !end || isNaN(new Date(start).getTime()) || isNaN(new Date(end).getTime())) {
+          await sendMessage(chatId, "❌ לא הצלחתי להבין את התאריך/שעה.\nנסה לציין בצורה ברורה, למשל:\n'פגישה עם קטיה ביום ראשון 19.4 בשעה 9:00'")
           return NextResponse.json({ ok: true })
         }
 
-        if (!parsed.date || !parsed.startTime) {
-          await sendMessage(chatId, "❌ לא הצלחתי להבין את התאריך/שעה. נסה לציין בצורה ברורה יותר, למשל: 'פגישה עם קטיה ביום ראשון ה-19.4 בשעה 9:00'")
-          return NextResponse.json({ ok: true })
+        // Parse date and time from ISO strings for PendingEvent format
+        const startDate = new Date(start)
+        const endDate = new Date(end)
+        const toJerusalemParts = (d: Date) => {
+          const parts = d.toLocaleString("en-CA", {
+            timeZone: "Asia/Jerusalem",
+            year: "numeric", month: "2-digit", day: "2-digit",
+            hour: "2-digit", minute: "2-digit", hour12: false,
+          }).split(", ")
+          return { date: parts[0], time: parts[1]?.slice(0, 5) ?? "00:00" }
         }
+        const { date, time: startTime } = toJerusalemParts(startDate)
+        const { time: endTime } = toJerusalemParts(endDate)
 
+        const parsed = { title: summary, date, startTime, endTime, location, attendees, description }
         await confirmOrCreateEvent(chatId, parsed, user.refreshToken)
       } catch (e: any) {
         console.error("[doc-bot] create_event error:", e?.message ?? e)
         const msg = String(e?.message ?? "")
         if (msg.includes("invalid_grant") || msg.includes("Token has been expired") || msg.includes("unauthorized")) {
-          await sendMessage(chatId, "⚠️ פג תוקף החיבור ל-Google. שלח /connect כדי להתחבר מחדש.")
+          await sendMessage(chatId, "פג תוקף החיבור ל-Google. שלח /connect כדי להתחבר מחדש.")
         } else {
-          await sendMessage(chatId, `❌ שגיאה ביצירת האירוע: ${msg || "נסה שוב."}`)
+          await sendMessage(chatId, "שגיאה ביצירת האירוע. נסה שוב.")
         }
       }
       return NextResponse.json({ ok: true })
