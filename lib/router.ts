@@ -105,6 +105,28 @@ export async function routeMessage(
   const normalizedText = normalizeText(text, now)
   const dateContext = getDateContext(now)
 
+  // Task creation — catch "תוסיף/הוסף משימה" before main Claude call
+  const isAddTask = /(?:(?:תוסיף|הוסף|צור|תצור|הכנס|הוסף\s+לי)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?משימה)/i.test(lower)
+  if (isAddTask) {
+    const taskRes = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 200,
+      system: `You extract task details from Hebrew text. Return ONLY valid JSON, no markdown.
+${dateContext}
+Return exactly: {"action":"add_task","title":"<task title>","due":"<ISO date YYYY-MM-DD or omit if no date>"}
+- title: the task name only, without date/time words
+- due: date only (no time), e.g. "2026-04-13". Omit the field if no due date mentioned.`,
+      messages: [{ role: "user", content: normalizedText }],
+    })
+    try {
+      const rawTask = taskRes.content[0].type === "text"
+        ? taskRes.content[0].text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim()
+        : ""
+      const parsedTask = JSON.parse(rawTask)
+      if (parsedTask.action === "add_task" && parsedTask.title) return parsedTask as Intent
+    } catch { /* fall through */ }
+  }
+
   // Calendar creation — catch "תוסיף/הוסף/קבע ליומן" patterns with a focused Claude call
   // so that event titles like "דייט", "ריצה", "שינה" are never misclassified as chat
   const isCalCreate = /(?:(?:תוסיף|הוסף|קבע|תקבע|צור|תצור|שים|רשום|תרשום)\s+(?:לי\s+)?(?:ל(?:ה)?)?יומן)/i.test(lower)

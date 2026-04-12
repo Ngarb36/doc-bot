@@ -117,9 +117,12 @@ export async function addTask(
   const listId = listsRes.data.items?.[0]?.id
   if (!listId) return
 
+  // Google Tasks API requires due in RFC 3339 format with time component
+  const dueRfc = due ? new Date(due + "T00:00:00.000Z").toISOString() : undefined
+
   await tasks.tasks.insert({
     tasklist: listId,
-    requestBody: { title, due },
+    requestBody: { title, due: dueRfc },
   })
 }
 

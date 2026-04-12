@@ -1,6 +1,8 @@
 import { kv } from "@vercel/kv"
 import { randomBytes } from "crypto"
 
+const P = "doc:" // namespace prefix — keeps DocBot keys separate from CaliBot in shared KV
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface UserRecord {
@@ -29,25 +31,25 @@ export interface ListItem {
 
 export async function createConnectToken(chatId: string | number): Promise<string> {
   const token = randomBytes(20).toString("hex")
-  await kv.set(`connect_token:${token}`, String(chatId), { ex: 600 })
+  await kv.set(`${P}connect_token:${token}`, String(chatId), { ex: 600 })
   return token
 }
 
 export async function resolveConnectToken(token: string): Promise<string | null> {
-  return kv.getdel<string>(`connect_token:${token}`)
+  return kv.getdel<string>(`${P}connect_token:${token}`)
 }
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 export async function getUser(chatId: string | number): Promise<UserRecord | null> {
-  return kv.get<UserRecord>(`user:${chatId}`)
+  return kv.get<UserRecord>(`${P}user:${chatId}`)
 }
 
 export async function saveUser(
   chatId: string | number,
   data: { refreshToken: string; email: string }
 ): Promise<void> {
-  await kv.set(`user:${chatId}`, { ...data, connectedAt: new Date().toISOString() })
+  await kv.set(`${P}user:${chatId}`, { ...data, connectedAt: new Date().toISOString() })
 }
 
 // ── Reminders ─────────────────────────────────────────────────────────────────
@@ -65,42 +67,42 @@ export async function addReminder(
     recurrence: data.recurrence,
     createdAt: Date.now(),
   }
-  await kv.set(`reminder:${id}`, reminder)
-  await kv.sadd(`reminders:${chatId}`, id)
-  await kv.sadd("all_reminders", id)
+  await kv.set(`${P}reminder:${id}`, reminder)
+  await kv.sadd(`${P}reminders:${chatId}`, id)
+  await kv.sadd(`${P}all_reminders`, id)
   return id
 }
 
 export async function getReminder(id: string): Promise<Reminder | null> {
-  return kv.get<Reminder>(`reminder:${id}`)
+  return kv.get<Reminder>(`${P}reminder:${id}`)
 }
 
 export async function updateReminder(id: string, patch: Partial<Reminder>): Promise<void> {
   const existing = await getReminder(id)
   if (!existing) return
-  await kv.set(`reminder:${id}`, { ...existing, ...patch })
+  await kv.set(`${P}reminder:${id}`, { ...existing, ...patch })
 }
 
 export async function deleteReminder(chatId: string | number, id: string): Promise<void> {
-  await kv.del(`reminder:${id}`)
-  await kv.srem(`reminders:${chatId}`, id)
-  await kv.srem("all_reminders", id)
+  await kv.del(`${P}reminder:${id}`)
+  await kv.srem(`${P}reminders:${chatId}`, id)
+  await kv.srem(`${P}all_reminders`, id)
 }
 
 export async function getUserReminders(chatId: string | number): Promise<Reminder[]> {
-  const ids = await kv.smembers<string[]>(`reminders:${chatId}`)
+  const ids = await kv.smembers<string[]>(`${P}reminders:${chatId}`)
   if (!ids || ids.length === 0) return []
-  const reminders = await Promise.all(ids.map((id) => kv.get<Reminder>(`reminder:${id}`)))
+  const reminders = await Promise.all(ids.map((id) => kv.get<Reminder>(`${P}reminder:${id}`)))
   return reminders
     .filter((r): r is Reminder => r !== null)
     .sort((a, b) => a.remindAt - b.remindAt)
 }
 
 export async function getPendingReminders(): Promise<Reminder[]> {
-  const ids = await kv.smembers<string[]>("all_reminders")
+  const ids = await kv.smembers<string[]>(`${P}all_reminders`)
   if (!ids || ids.length === 0) return []
   const now = Date.now()
-  const reminders = await Promise.all(ids.map((id) => kv.get<Reminder>(`reminder:${id}`)))
+  const reminders = await Promise.all(ids.map((id) => kv.get<Reminder>(`${P}reminder:${id}`)))
   return reminders.filter((r): r is Reminder => r !== null && r.remindAt <= now)
 }
 
@@ -110,7 +112,7 @@ export async function getList(
   chatId: string | number,
   listName: string
 ): Promise<ListItem[]> {
-  const key = `list:${chatId}:${listName.toLowerCase()}`
+  const key = `${P}list:${chatId}:${listName.toLowerCase()}`
   return (await kv.get<ListItem[]>(key)) ?? []
 }
 
@@ -126,9 +128,9 @@ export async function addToList(
     done: false,
     addedAt: Date.now(),
   }
-  const key = `list:${chatId}:${listName.toLowerCase()}`
+  const key = `${P}list:${chatId}:${listName.toLowerCase()}`
   await kv.set(key, [...items, item])
-  await kv.sadd(`lists:${chatId}`, listName.toLowerCase())
+  await kv.sadd(`${P}lists:${chatId}`, listName.toLowerCase())
 }
 
 export async function removeFromList(
@@ -137,7 +139,7 @@ export async function removeFromList(
   itemId: string
 ): Promise<void> {
   const items = await getList(chatId, listName)
-  const key = `list:${chatId}:${listName.toLowerCase()}`
+  const key = `${P}list:${chatId}:${listName.toLowerCase()}`
   await kv.set(key, items.filter((i) => i.id !== itemId))
 }
 
@@ -145,12 +147,12 @@ export async function clearList(
   chatId: string | number,
   listName: string
 ): Promise<void> {
-  const key = `list:${chatId}:${listName.toLowerCase()}`
+  const key = `${P}list:${chatId}:${listName.toLowerCase()}`
   await kv.del(key)
 }
 
 export async function getUserLists(chatId: string | number): Promise<string[]> {
-  return (await kv.smembers<string[]>(`lists:${chatId}`)) ?? []
+  return (await kv.smembers<string[]>(`${P}lists:${chatId}`)) ?? []
 }
 
 // ── Conversation history ──────────────────────────────────────────────────────
@@ -161,7 +163,7 @@ export interface ConversationMessage {
 }
 
 export async function getConversationHistory(chatId: string | number): Promise<ConversationMessage[]> {
-  return (await kv.get<ConversationMessage[]>(`history:${chatId}`)) ?? []
+  return (await kv.get<ConversationMessage[]>(`${P}history:${chatId}`)) ?? []
 }
 
 export async function appendConversationHistory(
@@ -175,7 +177,7 @@ export async function appendConversationHistory(
     { role: "user" as const, content: userMsg },
     { role: "assistant" as const, content: assistantMsg },
   ].slice(-10) // keep last 5 exchanges
-  await kv.set(`history:${chatId}`, updated, { ex: 3600 }) // 1 hour TTL
+  await kv.set(`${P}history:${chatId}`, updated, { ex: 3600 }) // 1 hour TTL
 }
 
 // ── Pending calendar events (awaiting clarification or calendar selection) ───
@@ -193,15 +195,15 @@ export interface PendingEvent {
 }
 
 export async function savePendingEvent(chatId: string | number, event: PendingEvent): Promise<void> {
-  await kv.set(`pending_event:${chatId}`, event, { ex: 600 })
+  await kv.set(`${P}pending_event:${chatId}`, event, { ex: 600 })
 }
 
 export async function getPendingEvent(chatId: string | number): Promise<PendingEvent | null> {
-  return kv.get<PendingEvent>(`pending_event:${chatId}`)
+  return kv.get<PendingEvent>(`${P}pending_event:${chatId}`)
 }
 
 export async function deletePendingEvent(chatId: string | number): Promise<void> {
-  await kv.del(`pending_event:${chatId}`)
+  await kv.del(`${P}pending_event:${chatId}`)
 }
 
 // ── Pending Gmail confirmations ───────────────────────────────────────────────
@@ -217,15 +219,15 @@ export async function savePendingEmail(
   chatId: string | number,
   email: PendingEmail
 ): Promise<void> {
-  await kv.set(`pending_email:${chatId}`, email, { ex: 300 }) // 5 min TTL
+  await kv.set(`${P}pending_email:${chatId}`, email, { ex: 300 }) // 5 min TTL
 }
 
 export async function getPendingEmail(
   chatId: string | number
 ): Promise<PendingEmail | null> {
-  return kv.get<PendingEmail>(`pending_email:${chatId}`)
+  return kv.get<PendingEmail>(`${P}pending_email:${chatId}`)
 }
 
 export async function deletePendingEmail(chatId: string | number): Promise<void> {
-  await kv.del(`pending_email:${chatId}`)
+  await kv.del(`${P}pending_email:${chatId}`)
 }
