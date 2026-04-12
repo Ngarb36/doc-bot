@@ -244,7 +244,7 @@ export async function handleIntent(
     // ── Groups ────────────────────────────────────────────────────────────────
     case "create_group": {
       const { groupName, memberNames } = intent
-      const EMAIL_RE = /\(([^\s@]+@[^\s@]+\.[^\s@]+)\)/
+      const EMAIL_RE = /([^\s@]+@[^\s@]+\.[^\s@]+)/
       const resolved: { name: string; email: string }[] = []
       const unresolved: string[] = []
 
@@ -252,8 +252,9 @@ export async function handleIntent(
         // Format: "דני (dani@gmail.com)" — email explicitly provided
         const emailMatch = raw.match(EMAIL_RE)
         if (emailMatch) {
-          const name = raw.replace(EMAIL_RE, "").trim()
-          resolved.push({ name, email: emailMatch[1] })
+          // Strip email + surrounding separators (—, -, :, spaces, parentheses)
+          const name = raw.replace(EMAIL_RE, "").replace(/[\s\-—:()\u2014]+$/, "").trim()
+          resolved.push({ name: name || raw.trim(), email: emailMatch[1] })
           continue
         }
         // Otherwise search Google Contacts by name
