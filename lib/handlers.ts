@@ -18,6 +18,7 @@ import {
   getList,
   clearList,
   getUserLists,
+  removeFromList,
   savePendingEmail,
   getPendingEmail,
   deletePendingEmail,
@@ -163,6 +164,27 @@ export async function handleIntent(
     case "clear_list": {
       await clearList(chatId, intent.listName)
       return `🗑 רשימת "${intent.listName}" נוקתה.`
+    }
+
+    case "remove_from_list": {
+      const query = intent.item.toLowerCase()
+      const lists = await getUserLists(chatId)
+      const removed: string[] = []
+
+      for (const listName of lists) {
+        const items = await getList(chatId, listName)
+        for (const item of items) {
+          const itemLower = item.text.toLowerCase()
+          // Match if the query contains the item or the item contains the query
+          if (itemLower.includes(query) || query.includes(itemLower)) {
+            await removeFromList(chatId, listName, item.id)
+            removed.push(`"${item.text}" מרשימת ${listName}`)
+          }
+        }
+      }
+
+      if (removed.length === 0) return `לא מצאתי "${intent.item}" באף רשימה.`
+      return `✅ ${removed.join("\n✅ ")}`
     }
 
     // ── Contacts ──────────────────────────────────────────────────────────────

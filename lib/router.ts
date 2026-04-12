@@ -16,6 +16,7 @@ export type Intent =
   | { action: "add_to_list"; listName: string; items: string[] }
   | { action: "show_list"; listName: string }
   | { action: "clear_list"; listName: string }
+  | { action: "remove_from_list"; item: string }
   | { action: "read_emails"; count: number }
   | { action: "send_email"; to: string; subject: string; body: string }
   | { action: "search_contacts"; query: string }
@@ -83,6 +84,11 @@ export async function routeMessage(
   }
 
   // Quick deterministic checks before hitting Claude
+  const boughtMatch = lower.match(/^(?:קניתי|רכשתי|לקחתי)\s+(.+)/)
+  if (boughtMatch) {
+    return { action: "remove_from_list", item: boughtMatch[1].trim() }
+  }
+
   if (/(?:מה\s+(?:ה)?משימות|רשימת\s+מטלות|מה\s+יש\s+לי\s+לעשות|google\s+tasks|תראה.*משימות|הצג.*משימות)/i.test(lower)) {
     return { action: "list_tasks" }
   }
