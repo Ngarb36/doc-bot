@@ -91,22 +91,22 @@ export async function routeMessage(
     return { action: "list_events", days: 7 }
   }
 
-  // Calendar creation — catch "תוסיף/הוסף/קבע ליומן / ביומן" patterns BEFORE Claude
-  // so that event titles like "דייט", "ריצה", "שינה" etc. are never misclassified as chat
-  // "תוסיף ליומן" / "תוסיף לי יומן" / "קבע יומן" / "הוסף להיומן"
+  const normalizedText = normalizeText(text, now)
+  const dateContext = getDateContext(now)
+
+  // Calendar creation — catch "תוסיף/הוסף/קבע ליומן" patterns with a focused Claude call
+  // so that event titles like "דייט", "ריצה", "שינה" are never misclassified as chat
   const isCalCreate = /(?:(?:תוסיף|הוסף|קבע|תקבע|צור|תצור|שים|רשום|תרשום)\s+(?:לי\s+)?(?:ל(?:ה)?)?יומן)/i.test(lower)
   if (isCalCreate) {
-    // Still need Claude to extract title/date/time — but force the action hint
-    const forcedHint = "\n\nCRITICAL: The user is asking to CREATE a calendar event. You MUST return action=create_event with ISO dates."
     const response2 = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 300,
       system: `You extract calendar event details from Hebrew text. Return ONLY valid JSON, no markdown.
 ${dateContext}
-Return: {"action":"create_event","summary":"<title>","start":"<ISO datetime +03:00>","end":"<ISO datetime +03:00>"}
+Return exactly: {"action":"create_event","summary":"<title>","start":"<ISO datetime +03:00>","end":"<ISO datetime +03:00>"}
 - If no end time, add 1 hour to start.
-- Always use full ISO 8601: "2026-04-13T16:00:00+03:00"${forcedHint}`,
-      messages: [{ role: "user", content: normalizeText(text, now) }],
+- Always full ISO 8601 with timezone: "2026-04-13T16:00:00+03:00"`,
+      messages: [{ role: "user", content: normalizedText }],
     })
     try {
       const raw2 = response2.content[0].type === "text"
@@ -116,9 +116,6 @@ Return: {"action":"create_event","summary":"<title>","start":"<ISO datetime +03:
       if (parsed2.action === "create_event" && parsed2.start && parsed2.end) return parsed2 as Intent
     } catch { /* fall through to main Claude call */ }
   }
-
-  const normalizedText = normalizeText(text, now)
-  const dateContext = getDateContext(now)
 
   const messages: { role: "user" | "assistant"; content: string }[] = [
     ...conversationHistory.slice(-4), // last 2 exchanges for context
