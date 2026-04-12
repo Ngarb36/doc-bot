@@ -15,7 +15,8 @@ function ConnectContent() {
     )
   }
 
-  const redirectUri = `${process.env.NEXT_PUBLIC_URL ?? ""}/api/connect-callback`
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
+  const redirectUri = `${origin}/api/connect-callback`
   const scope = [
     "openid", "email", "profile",
     "https://www.googleapis.com/auth/calendar",
@@ -26,8 +27,9 @@ function ConnectContent() {
     "https://www.googleapis.com/auth/gmail.readonly",
   ].join(" ")
 
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ""
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-    `client_id=${process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ""}&` +
+    `client_id=${encodeURIComponent(clientId)}&` +
     `redirect_uri=${encodeURIComponent(redirectUri)}&` +
     `response_type=code&` +
     `scope=${encodeURIComponent(scope)}&` +
