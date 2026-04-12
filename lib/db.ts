@@ -178,6 +178,31 @@ export async function appendConversationHistory(
   await kv.set(`history:${chatId}`, updated, { ex: 3600 }) // 1 hour TTL
 }
 
+// ── Pending calendar events (awaiting clarification or calendar selection) ───
+
+export interface PendingEvent {
+  title: string
+  date: string
+  startTime: string
+  endTime: string
+  location?: string
+  attendees?: string[]
+  description?: string
+  createdAt: number
+}
+
+export async function savePendingEvent(chatId: string | number, event: PendingEvent): Promise<void> {
+  await kv.set(`pending_event:${chatId}`, event, { ex: 600 })
+}
+
+export async function getPendingEvent(chatId: string | number): Promise<PendingEvent | null> {
+  return kv.get<PendingEvent>(`pending_event:${chatId}`)
+}
+
+export async function deletePendingEvent(chatId: string | number): Promise<void> {
+  await kv.del(`pending_event:${chatId}`)
+}
+
 // ── Pending Gmail confirmations ───────────────────────────────────────────────
 
 export interface PendingEmail {

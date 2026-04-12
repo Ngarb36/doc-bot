@@ -16,6 +16,13 @@ export function getAuthenticatedClient(refreshToken: string) {
 
 // ── Calendar ──────────────────────────────────────────────────────────────────
 
+export async function listUserCalendars(refreshToken: string): Promise<{ id: string; name: string }[]> {
+  const auth = getAuthenticatedClient(refreshToken)
+  const calendar = google.calendar({ version: "v3", auth })
+  const res = await calendar.calendarList.list({ minAccessRole: "writer" })
+  return (res.data.items ?? []).map((c) => ({ id: c.id ?? "primary", name: c.summary ?? "Calendar" }))
+}
+
 export async function createCalendarEvent(
   refreshToken: string,
   event: {
@@ -25,13 +32,14 @@ export async function createCalendarEvent(
     end: string
     attendees?: string[]
     location?: string
-  }
+  },
+  calendarId = "primary"
 ) {
   const auth = getAuthenticatedClient(refreshToken)
   const calendar = google.calendar({ version: "v3", auth })
 
   const res = await calendar.events.insert({
-    calendarId: "primary",
+    calendarId,
     sendUpdates: event.attendees?.length ? "all" : "none",
     requestBody: {
       summary: event.summary,
