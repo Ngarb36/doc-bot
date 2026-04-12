@@ -154,7 +154,7 @@ async function handleCallback(update: any) {
     }
 
     try {
-      const link = await createCalendarEvent(user.refreshToken, {
+      const htmlLink = await createCalendarEvent(user.refreshToken, {
         summary: pending.title,
         start: `${pending.date}T${pending.startTime}:00`,
         end: `${pending.date}T${pending.endTime}:00`,
@@ -163,10 +163,12 @@ async function handleCallback(update: any) {
         description: pending.description,
       }, calId)
       await deletePendingEvent(chatId)
+      const linkStr = htmlLink ? `\n🔗 [פתח ביומן](${htmlLink})` : ""
       await editMessage(chatId, messageId,
-        `✅ *אירוע נוצר!*\n📅 *${pending.title}*\n🕐 ${formatDate(`${pending.date}T${pending.startTime}:00`)}\n🔗 ${link ?? ""}`)
-    } catch (e) {
-      await editMessage(chatId, messageId, "❌ שגיאה ביצירת האירוע.")
+        `✅ *אירוע נוצר!*\n📅 *${pending.title}*\n🕐 ${formatDate(`${pending.date}T${pending.startTime}:00`)}${linkStr}`)
+    } catch (e: any) {
+      console.error("[doc-bot] cal_select error:", e?.message ?? e)
+      await editMessage(chatId, messageId, "❌ שגיאה ביצירת האירוע. נסה שוב.")
     }
     return
   }
@@ -231,20 +233,17 @@ async function confirmOrCreateEvent(chatId: number, parsed: any, refreshToken: s
     // Auto-select primary
     const user = await getUser(chatId)
     if (user) {
-      try {
-        const link = await createCalendarEvent(user.refreshToken, {
-          summary: parsed.title,
-          start: startDateTime,
-          end: endDateTime,
-          location: parsed.location,
-          attendees: parsed.attendees,
-          description: parsed.description,
-        })
-        await deletePendingEvent(chatId)
-        await sendMessage(chatId, `✅ *אירוע נוצר!*\n📅 *${parsed.title}*\n🕐 ${formatDate(startDateTime)}\n🔗 ${link ?? ""}`)
-      } catch (e) {
-        await sendMessage(chatId, "❌ שגיאה ביצירת האירוע. נסה שוב.")
-      }
+      const htmlLink = await createCalendarEvent(user.refreshToken, {
+        summary: parsed.title,
+        start: startDateTime,
+        end: endDateTime,
+        location: parsed.location,
+        attendees: parsed.attendees,
+        description: parsed.description,
+      })
+      await deletePendingEvent(chatId)
+      const linkStr = htmlLink ? `\n🔗 [פתח ביומן](${htmlLink})` : ""
+      await sendMessage(chatId, `✅ *אירוע נוצר!*\n📅 *${parsed.title}*\n🕐 ${formatDate(startDateTime)}${linkStr}`)
     }
     return
   }
@@ -409,25 +408,40 @@ export async function POST(req: NextRequest) {
 
     // Intercept create_event to use the parser + calendar selection
     if (intent.action === "create_event" && user) {
-      const todayISO = new Date().toISOString()
-      const parsed = await parseEventFromText(text, todayISO)
+      try {
+        const todayISO = new Date().toISOString()
+        const parsed = await parseEventFromText(text, todayISO)
 
-      if (parsed.clarificationNeeded) {
-        await savePendingEvent(chatId, {
-          title: parsed.title,
-          date: parsed.date,
-          startTime: parsed.startTime,
-          endTime: parsed.endTime,
-          location: parsed.location,
-          attendees: parsed.attendees,
-          description: parsed.description,
-          createdAt: Date.now(),
-        })
-        await sendMessage(chatId, `📅 זיהיתי: *${parsed.title}*\n\n${parsed.clarificationNeeded}`)
-        return NextResponse.json({ ok: true })
+        if (parsed.clarificationNeeded) {
+          await savePendingEvent(chatId, {
+            title: parsed.title,
+            date: parsed.date,
+            startTime: parsed.startTime,
+            endTime: parsed.endTime,
+            location: parsed.location,
+            attendees: parsed.attendees,
+            description: parsed.description,
+            createdAt: Date.now(),
+          })
+          await sendMessage(chatId, `📅 זיהיתי: *${parsed.title || "אירוע"}*\n\n${parsed.clarificationNeeded}`)
+          return NextResponse.json({ ok: true })
+        }
+
+        if (!parsed.date || !parsed.startTime) {
+          await sendMessage(chatId, "❌ לא הצלחתי להבין את התאריך/שעה. נסה לציין בצורה ברורה יותר, למשל: 'פגישה עם קטיה ביום ראשון ה-19.4 בשעה 9:00'")
+          return NextResponse.json({ ok: true })
+        }
+
+        await confirmOrCreateEvent(chatId, parsed, user.refreshToken)
+      } catch (e: any) {
+        console.error("[doc-bot] create_event error:", e?.message ?? e)
+        const msg = String(e?.message ?? "")
+        if (msg.includes("invalid_grant") || msg.includes("Token has been expired") || msg.includes("unauthorized")) {
+          await sendMessage(chatId, "⚠️ פג תוקף החיבור ל-Google. שלח /connect כדי להתחבר מחדש.")
+        } else {
+          await sendMessage(chatId, `❌ שגיאה ביצירת האירוע: ${msg || "נסה שוב."}`)
+        }
       }
-
-      await confirmOrCreateEvent(chatId, parsed, user.refreshToken)
       return NextResponse.json({ ok: true })
     }
 

@@ -34,7 +34,7 @@ export async function createCalendarEvent(
     location?: string
   },
   calendarId = "primary"
-) {
+): Promise<string | null> {
   const auth = getAuthenticatedClient(refreshToken)
   const calendar = google.calendar({ version: "v3", auth })
 
@@ -50,7 +50,7 @@ export async function createCalendarEvent(
       attendees: event.attendees?.map((email) => ({ email })),
     },
   })
-  return res.data
+  return res.data.htmlLink ?? null
 }
 
 export async function listCalendarEvents(

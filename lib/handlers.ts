@@ -84,9 +84,10 @@ export async function handleIntent(
       if (!start || !end || isNaN(new Date(start).getTime()) || isNaN(new Date(end).getTime())) {
         return "❌ לא הצלחתי להבין את התאריך. נסה לציין תאריך ושעה מדויקים, למשל: 'מחר בשעה 10:00 למשך שעה'."
       }
-      const event = await createCalendarEvent(refreshToken!, { summary, start, end, attendees, location, description })
+      const htmlLink = await createCalendarEvent(refreshToken!, { summary, start, end, attendees, location, description })
       const attendeeStr = attendees?.length ? `\n👥 *משתתפים:* ${attendees.join(", ")}` : ""
-      return `✅ *אירוע נוצר!*\n📅 *${summary}*\n🕐 ${formatDate(start)} → ${formatDate(end)}${attendeeStr}\n🔗 ${event.htmlLink ?? ""}`
+      const linkStr = htmlLink ? `\n🔗 [פתח ביומן](${htmlLink})` : ""
+      return `✅ *אירוע נוצר!*\n📅 *${summary}*\n🕐 ${formatDate(start)} → ${formatDate(end)}${attendeeStr}${linkStr}`
     }
 
     case "list_events": {

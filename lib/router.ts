@@ -123,7 +123,13 @@ IMPORTANT date rules:
 - "מחר" = tomorrow
 - Use the pre-calculated day dates above for Hebrew day names
 - If year not specified, use current year (${now.getFullYear()})
-- Default meeting time is 09:00 if only date given with no time`,
+- Default meeting time is 09:00 if only date given with no time
+
+Intent classification hints (Hebrew):
+- "תוסיף לי יומן / הוסף יומן / צור פגישה / קבע ישיבה" → create_event
+- "תזכיר לי / תזכורת" → add_reminder
+- "תוסיף משימה / הוסף משימה" → add_task
+- "מה יש לי / מה קרה / תראה לי את היומן" → list_events`,
     messages,
   })
 
