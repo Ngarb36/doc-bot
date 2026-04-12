@@ -244,26 +244,36 @@ export async function handleIntent(
     // ── Groups ────────────────────────────────────────────────────────────────
     case "create_group": {
       const { groupName, memberNames } = intent
-      const contacts = await searchContacts(refreshToken!, memberNames.join(" "))
-      // Try to resolve each member name individually
+      const EMAIL_RE = /\(([^\s@]+@[^\s@]+\.[^\s@]+)\)/
       const resolved: { name: string; email: string }[] = []
       const unresolved: string[] = []
-      for (const memberName of memberNames) {
-        const results = await searchContacts(refreshToken!, memberName)
+
+      for (const raw of memberNames) {
+        // Format: "דני (dani@gmail.com)" — email explicitly provided
+        const emailMatch = raw.match(EMAIL_RE)
+        if (emailMatch) {
+          const name = raw.replace(EMAIL_RE, "").trim()
+          resolved.push({ name, email: emailMatch[1] })
+          continue
+        }
+        // Otherwise search Google Contacts by name
+        const results = await searchContacts(refreshToken!, raw)
         if (results.length === 1) {
           resolved.push(results[0])
         } else if (results.length > 1) {
-          // pick best match
-          const best = results.find(r => r.name.toLowerCase().includes(memberName.toLowerCase()))
+          const best = results.find(r => r.name.toLowerCase().includes(raw.toLowerCase()))
           if (best) resolved.push(best)
-          else unresolved.push(memberName)
+          else unresolved.push(raw)
         } else {
-          unresolved.push(memberName)
+          unresolved.push(raw)
         }
       }
+
       await saveGroup(chatId, { name: groupName, members: resolved, createdAt: Date.now() })
       const memberLines = resolved.map(m => `• ${m.name} (${m.email})`).join("\n")
-      const unresolvedStr = unresolved.length ? `\n\n⚠️ לא נמצאו: ${unresolved.join(", ")}` : ""
+      const unresolvedStr = unresolved.length
+        ? `\n\n⚠️ לא נמצאו (הוסף מייל בסוגריים):\n${unresolved.map(n => `• ${n}`).join("\n")}`
+        : ""
       return `👥 *קבוצה נשמרה: "${groupName}"*\n\n${memberLines}${unresolvedStr}`
     }
 

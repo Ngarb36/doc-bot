@@ -22,6 +22,33 @@ const BASE_URL = `https://api.telegram.org/bot${BOT_TOKEN}`
 // ── Telegram API helpers ──────────────────────────────────────────────────────
 
 async function sendMessage(chatId: number | string, text: string, replyMarkup?: object) {
+  const MAX = 4000
+  // Split on newlines to avoid cutting mid-line
+  if (text.length > MAX) {
+    const lines = text.split("\n")
+    let chunk = ""
+    for (const line of lines) {
+      if ((chunk + "\n" + line).length > MAX) {
+        await fetch(`${BASE_URL}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: chunk, parse_mode: "Markdown", disable_web_page_preview: true }),
+        })
+        chunk = line
+      } else {
+        chunk = chunk ? chunk + "\n" + line : line
+      }
+    }
+    if (chunk) {
+      const res = await fetch(`${BASE_URL}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: chunk, parse_mode: "Markdown", disable_web_page_preview: true, ...(replyMarkup && { reply_markup: replyMarkup }) }),
+      })
+      return res.json()
+    }
+    return
+  }
   const res = await fetch(`${BASE_URL}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
