@@ -211,7 +211,6 @@ async function handleImageEvent(chatId: number, photo: any[], caption: string, r
 async function confirmOrCreateEvent(chatId: number, parsed: any, refreshToken: string) {
   const { startDateTime, endDateTime } = buildISODateTimes(parsed)
 
-  // Get available calendars
   const calendars = await listUserCalendars(refreshToken)
 
   await savePendingEvent(chatId, {
@@ -227,28 +226,7 @@ async function confirmOrCreateEvent(chatId: number, parsed: any, refreshToken: s
 
   const attendeeStr = parsed.attendees?.length ? `\n👥 ${parsed.attendees.join(", ")}` : ""
   const locationStr = parsed.location ? `\n📍 ${parsed.location}` : ""
-  const confidenceNote = parsed.confidence === "low" ? "\n\n⚠️ _לא בטוח לגמרי — אנא אשר_" : ""
-
-  const text = `📅 *${parsed.title}*\n🗓 ${formatDate(startDateTime)}${locationStr}${attendeeStr}${confidenceNote}\n\nלאיזה יומן להוסיף?`
-
-  if (calendars.length <= 1) {
-    // Auto-select primary
-    const user = await getUser(chatId)
-    if (user) {
-      const htmlLink = await createCalendarEvent(user.refreshToken, {
-        summary: parsed.title,
-        start: startDateTime,
-        end: endDateTime,
-        location: parsed.location,
-        attendees: parsed.attendees,
-        description: parsed.description,
-      })
-      await deletePendingEvent(chatId)
-      const linkStr = htmlLink ? `\n🔗 [פתח ביומן](${htmlLink})` : ""
-      await sendMessage(chatId, `✅ *אירוע נוצר!*\n📅 *${parsed.title}*\n🕐 ${formatDate(startDateTime)}${linkStr}`)
-    }
-    return
-  }
+  const text = `📅 *${parsed.title}*\n🗓 ${formatDate(startDateTime)}${locationStr}${attendeeStr}\n\nלאיזה יומן להוסיף?`
 
   await sendMessage(chatId, text, calendarKeyboard(calendars))
 }
@@ -408,25 +386,23 @@ export async function POST(req: NextRequest) {
     const history = await getConversationHistory(chatId)
     const intent = await routeMessage(text, new Date(), history)
 
-    // Intercept create_event — create directly, skip calendar selection (saves one Google API call)
+    // Intercept create_event — use router's extracted dates, then ask which calendar
     if (intent.action === "create_event" && user) {
       try {
         const { summary, start, end, attendees, location, description } = intent
 
         if (!start || !end || isNaN(new Date(start).getTime()) || isNaN(new Date(end).getTime())) {
-          await sendMessage(chatId, `[DEBUG] start="${start ?? "null"}" end="${end ?? "null"}"`)
+          await sendMessage(chatId, "לא הצלחתי להבין את התאריך. נסה שוב עם תאריך ושעה ברורים.")
           return NextResponse.json({ ok: true })
         }
 
-        const htmlLink = await createCalendarEvent(user.refreshToken, {
-          summary, start, end, attendees, location, description,
-        })
+        // Extract YYYY-MM-DD and HH:MM from the ISO string (router returns +03:00 so slice is safe)
+        const datePart  = start.slice(0, 10)           // "2026-04-26"
+        const startTime = start.slice(11, 16)           // "09:00"
+        const endTime   = end.slice(11, 16)             // "10:00"
 
-        const startLabel = formatDate(start)
-        const endLabel  = formatDate(end)
-        const linkStr   = htmlLink ? ` [פתח](${htmlLink})` : ""
-        const attendeeStr = attendees?.length ? `\nמשתתפים: ${attendees.join(", ")}` : ""
-        await sendMessage(chatId, `נוצר: *${summary}*\n${startLabel} עד ${endLabel}${attendeeStr}${linkStr}`)
+        const parsed = { title: summary, date: datePart, startTime, endTime, location, attendees, description }
+        await confirmOrCreateEvent(chatId, parsed, user.refreshToken)
       } catch (e: any) {
         console.error("[doc-bot] create_event error:", e?.message ?? e)
         const msg = String(e?.message ?? "")
