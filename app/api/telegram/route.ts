@@ -414,7 +414,7 @@ export async function POST(req: NextRequest) {
         const { summary, start, end, attendees, location, description } = intent
 
         if (!start || !end || isNaN(new Date(start).getTime()) || isNaN(new Date(end).getTime())) {
-          await sendMessage(chatId, "לא הצלחתי להבין את התאריך. נסה שוב עם תאריך ושעה ברורים.")
+          await sendMessage(chatId, `[DEBUG] start="${start ?? "null"}" end="${end ?? "null"}"`)
           return NextResponse.json({ ok: true })
         }
 
