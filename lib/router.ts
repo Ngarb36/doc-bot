@@ -114,7 +114,7 @@ export async function routeMessage(
       system: `You extract task details from Hebrew text. Return ONLY valid JSON, no markdown.
 ${dateContext}
 Return exactly: {"action":"add_task","title":"<task title>","due":"<ISO date YYYY-MM-DD or omit if no date>"}
-- title: the task name only, without date/time words
+- title: the full task description in Hebrew, preserving infinitive prefixes like ל (e.g. "לנקות תריסים", not "נקות תריסים"). Remove only date/time words.
 - due: date only (no time), e.g. "2026-04-13". Omit the field if no due date mentioned.`,
       messages: [{ role: "user", content: normalizedText }],
     })

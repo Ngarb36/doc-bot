@@ -119,7 +119,8 @@ export async function handleIntent(
     case "add_task": {
       const { title, due } = intent
       await addTask(refreshToken!, title, due)
-      return `✅ *משימה נוספה:* "${title}"${due ? `\n📅 עד: ${formatDate(due)}` : ""}`
+      const dueDateStr = due ? new Date(due + "T12:00:00Z").toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", weekday: "short", day: "numeric", month: "short" }) : null
+      return `✅ *משימה נוספה:* "${title}"${dueDateStr ? `\n📅 עד: ${dueDateStr}` : ""}`
     }
 
     case "list_tasks": {
