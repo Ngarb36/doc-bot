@@ -262,3 +262,17 @@ export async function deleteGroup(chatId: string | number, groupName: string): P
   await kv.del(`${P}group:${chatId}:${groupName.toLowerCase()}`)
   await kv.srem(`${P}groups:${chatId}`, groupName.toLowerCase())
 }
+
+export async function addMembersToGroup(
+  chatId: string | number,
+  groupName: string,
+  newMembers: { name: string; email: string }[]
+): Promise<ContactGroup | null> {
+  const group = await getGroup(chatId, groupName)
+  if (!group) return null
+  const existingEmails = new Set(group.members.map(m => m.email))
+  const toAdd = newMembers.filter(m => !existingEmails.has(m.email))
+  const updated: ContactGroup = { ...group, members: [...group.members, ...toAdd] }
+  await saveGroup(chatId, updated)
+  return updated
+}

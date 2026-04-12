@@ -26,6 +26,7 @@ import {
   saveGroup,
   getUserGroups,
   deleteGroup,
+  addMembersToGroup,
 } from "./db"
 import type { Intent } from "./router"
 
@@ -276,6 +277,41 @@ export async function handleIntent(
         ? `\n\n⚠️ לא נמצאו (הוסף מייל בסוגריים):\n${unresolved.map(n => `• ${n}`).join("\n")}`
         : ""
       return `👥 *קבוצה נשמרה: "${groupName}"*\n\n${memberLines}${unresolvedStr}`
+    }
+
+    case "add_to_group": {
+      const { groupName, memberNames } = intent
+      const EMAIL_RE = /([^\s@]+@[^\s@]+\.[^\s@]+)/
+      const resolved: { name: string; email: string }[] = []
+      const unresolved: string[] = []
+
+      for (const raw of memberNames) {
+        const emailMatch = raw.match(EMAIL_RE)
+        if (emailMatch) {
+          const name = raw.replace(EMAIL_RE, "").replace(/[\s\-—:()\u2014]+$/, "").trim()
+          resolved.push({ name: name || raw.trim(), email: emailMatch[1] })
+          continue
+        }
+        const results = await searchContacts(refreshToken!, raw)
+        if (results.length === 1) {
+          resolved.push(results[0])
+        } else if (results.length > 1) {
+          const best = results.find(r => r.name.toLowerCase().includes(raw.toLowerCase()))
+          if (best) resolved.push(best)
+          else unresolved.push(raw)
+        } else {
+          unresolved.push(raw)
+        }
+      }
+
+      const updated = await addMembersToGroup(chatId, groupName, resolved)
+      if (!updated) return `❌ לא נמצאה קבוצה בשם "${groupName}".`
+
+      const addedStr = resolved.map(m => `• ${m.name} (${m.email})`).join("\n")
+      const unresolvedStr = unresolved.length
+        ? `\n\n⚠️ לא נמצאו: ${unresolved.join(", ")}`
+        : ""
+      return `✅ *נוסף לקבוצה "${groupName}":*\n${addedStr}${unresolvedStr}\n\nסה"כ בקבוצה: ${updated.members.length} אנשים`
     }
 
     case "list_groups": {

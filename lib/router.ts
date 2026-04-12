@@ -24,6 +24,7 @@ export type Intent =
   | { action: "cancel_send_email" }
   | { action: "connect_google" }
   | { action: "create_group"; groupName: string; memberNames: string[] }
+  | { action: "add_to_group"; groupName: string; memberNames: string[] }
   | { action: "list_groups" }
   | { action: "delete_group"; groupName: string }
   | { action: "unknown" }
@@ -183,6 +184,7 @@ Available actions:
 - search_contacts: {query}
 - connect_google: {}
 - create_group: {groupName: "group name", memberNames: ["name1", "name2"]}
+- add_to_group: {groupName: "group name", memberNames: ["name1"]}
 - list_groups: {}
 - delete_group: {groupName: "group name"}
 - unknown: {}
@@ -208,6 +210,7 @@ Intent classification hints (Hebrew):
 
 CRITICAL: "רשימת מטלות", "מטלות", "משימות", "tasks" always → add_task or list_tasks, NEVER chat.
 - "צור קבוצה / הוסף קבוצה" → create_group
+- "הוסף [שם] לקבוצה [X] / הכנס [שם] לקבוצה" → add_to_group
 - "הצג קבוצות / מה הקבוצות" → list_groups
 - "מחק קבוצה" → delete_group`,
     messages,
