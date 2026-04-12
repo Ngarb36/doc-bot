@@ -124,7 +124,10 @@ export async function handleIntent(
     case "list_tasks": {
       const tasks = await listTasks(refreshToken!)
       if (tasks.length === 0) return "✅ אין משימות פתוחות. כל הכבוד!"
-      const lines = tasks.map((t, i) => `${i + 1}. ${t.title}${t.due ? ` (עד ${formatDate(t.due)})` : ""}`)
+      const lines = tasks.map((t, i) => {
+        const dueStr = t.due ? ` — עד ${new Date(t.due).toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "short" })}` : ""
+        return `${i + 1}. ${t.title}${dueStr}`
+      })
       return `📋 *המשימות שלך:*\n\n${lines.join("\n")}`
     }
 

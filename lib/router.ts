@@ -82,6 +82,11 @@ export async function routeMessage(
     return { action: "cancel_send_email" }
   }
 
+  // Quick deterministic checks before hitting Claude
+  if (/(?:מה\s+(?:ה)?משימות|רשימת\s+מטלות|מה\s+יש\s+לי\s+לעשות|google\s+tasks|תראה.*משימות|הצג.*משימות)/i.test(lower)) {
+    return { action: "list_tasks" }
+  }
+
   const normalizedText = normalizeText(text, now)
   const dateContext = getDateContext(now)
 
@@ -126,10 +131,16 @@ IMPORTANT date rules:
 - Default meeting time is 09:00 if only date given with no time
 
 Intent classification hints (Hebrew):
-- "תוסיף לי יומן / הוסף יומן / צור פגישה / קבע ישיבה" → create_event
+- "תוסיף/הוסף יומן / צור/קבע פגישה / ישיבה / תור / מפגש" → create_event
 - "תזכיר לי / תזכורת" → add_reminder
-- "תוסיף משימה / הוסף משימה" → add_task
-- "מה יש לי / מה קרה / תראה לי את היומן" → list_events`,
+- "תוסיף/הוסף משימה / תוסיף לרשימת מטלות / מטלה חדשה / task" → add_task
+- "מה המשימות / רשימת מטלות / מה יש לי לעשות / google tasks / tasks" → list_tasks
+- "מה יש לי ביומן / אירועים / תראה לי את היומן" → list_events
+- "חפש בדרייב / drive" → search_drive
+- "תשלח מייל / שלח מייל" → send_email
+- "תראה מיילים / מה יש במייל / מיילים אחרונים" → read_emails
+
+CRITICAL: "רשימת מטלות", "מטלות", "משימות", "tasks" always → add_task or list_tasks, NEVER chat.`,
     messages,
   })
 
