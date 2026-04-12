@@ -506,10 +506,16 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ ok: true })
         }
 
-        // Extract YYYY-MM-DD and HH:MM from the ISO string (router returns +03:00 so slice is safe)
-        const datePart  = start.slice(0, 10)           // "2026-04-26"
-        const startTime = start.slice(11, 16)           // "09:00"
-        const endTime   = end.slice(11, 16)             // "10:00"
+        // Convert ISO timestamps to Israel local time (handles any UTC offset from router)
+        const toIsrael = (iso: string) => {
+          const d = new Date(iso)
+          return {
+            date: new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Jerusalem" }).format(d),
+            time: new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", hour12: false }).format(d),
+          }
+        }
+        const { date: datePart, time: startTime } = toIsrael(start)
+        const { time: endTime } = toIsrael(end)
 
         const parsed = { title: summary, date: datePart, startTime, endTime, location, attendees, description }
 
