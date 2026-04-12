@@ -93,7 +93,8 @@ export async function routeMessage(
 
   // Calendar creation — catch "תוסיף/הוסף/קבע ליומן / ביומן" patterns BEFORE Claude
   // so that event titles like "דייט", "ריצה", "שינה" etc. are never misclassified as chat
-  const isCalCreate = /(?:(?:תוסיף|הוסף|קבע|תקבע|צור|תצור|שים|רשום|תרשום)(?:\s+לי)?(?:\s+ל)?(?:ה)?יומן)/i.test(lower)
+  // "תוסיף ליומן" / "תוסיף לי יומן" / "קבע יומן" / "הוסף להיומן"
+  const isCalCreate = /(?:(?:תוסיף|הוסף|קבע|תקבע|צור|תצור|שים|רשום|תרשום)\s+(?:לי\s+)?(?:ל(?:ה)?)?יומן)/i.test(lower)
   if (isCalCreate) {
     // Still need Claude to extract title/date/time — but force the action hint
     const forcedHint = "\n\nCRITICAL: The user is asking to CREATE a calendar event. You MUST return action=create_event with ISO dates."
