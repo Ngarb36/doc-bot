@@ -91,6 +91,11 @@ export async function routeMessage(
     return { action: "list_events", days: 7 }
   }
 
+  if (/(?:תראה.*מייל|הצג.*מייל|מה.*מייל|מיילים\s+אחרונים|האחרון\s+שקיבלתי|קיבלתי\s+מייל|inbox|תראה.*inbox)/i.test(lower)) {
+    const countMatch = lower.match(/(\d+)\s+מיילים?/)
+    return { action: "read_emails", count: countMatch ? parseInt(countMatch[1]) : 5 }
+  }
+
   const normalizedText = normalizeText(text, now)
   const dateContext = getDateContext(now)
 
