@@ -94,10 +94,11 @@ function reminderKeyboard(reminderId: string) {
 
 // ── Calendar selection keyboard ───────────────────────────────────────────────
 
+// Use index instead of full calendar ID — Telegram callback_data is capped at 64 bytes
 function calendarKeyboard(calendars: { id: string; name: string }[]) {
   return {
-    inline_keyboard: calendars.map((c) => [
-      { text: c.name, callback_data: `cal_select:${c.id}` },
+    inline_keyboard: calendars.map((c, i) => [
+      { text: c.name, callback_data: `cal_select:${i}` },
     ]),
   }
 }
@@ -146,14 +147,17 @@ async function handleCallback(update: any) {
 
   // ── Calendar selection ──────────────────────────────────────────────────
   if (data.startsWith("cal_select:")) {
-    const calId = data.replace("cal_select:", "")
+    const idx = parseInt(data.replace("cal_select:", ""), 10)
     const user = await getUser(chatId)
     const pending = await getPendingEvent(chatId)
 
     if (!user || !pending) {
-      await editMessage(chatId, messageId, "❌ הפגישה פגה. נסה שוב.")
+      await editMessage(chatId, messageId, "הפגישה פגה. נסה שוב.")
       return
     }
+
+    // Resolve calendar ID from stored list (index avoids 64-byte callback_data limit)
+    const calId = pending.calendarIds?.[idx] ?? "primary"
 
     try {
       const htmlLink = await createCalendarEvent(user.refreshToken, {
@@ -165,12 +169,12 @@ async function handleCallback(update: any) {
         description: pending.description,
       }, calId)
       await deletePendingEvent(chatId)
-      const linkStr = htmlLink ? `\n🔗 [פתח ביומן](${htmlLink})` : ""
+      const linkStr = htmlLink ? ` [פתח](${htmlLink})` : ""
       await editMessage(chatId, messageId,
-        `✅ *אירוע נוצר!*\n📅 *${pending.title}*\n🕐 ${formatDate(`${pending.date}T${pending.startTime}:00`)}${linkStr}`)
+        `נוצר: *${pending.title}*\n${formatDate(`${pending.date}T${pending.startTime}:00`)}${linkStr}`)
     } catch (e: any) {
       console.error("[doc-bot] cal_select error:", e?.message ?? e)
-      await editMessage(chatId, messageId, "❌ שגיאה ביצירת האירוע. נסה שוב.")
+      await editMessage(chatId, messageId, "שגיאה ביצירת האירוע. נסה שוב.")
     }
     return
   }
@@ -209,10 +213,11 @@ async function handleImageEvent(chatId: number, photo: any[], caption: string, r
 // ── Event confirmation / calendar selection ───────────────────────────────────
 
 async function confirmOrCreateEvent(chatId: number, parsed: any, refreshToken: string) {
-  const { startDateTime, endDateTime } = buildISODateTimes(parsed)
+  const { startDateTime } = buildISODateTimes(parsed)
 
   const calendars = await listUserCalendars(refreshToken)
 
+  // Save calendar IDs alongside the event so the callback can look them up by index
   await savePendingEvent(chatId, {
     title: parsed.title,
     date: parsed.date,
@@ -221,6 +226,7 @@ async function confirmOrCreateEvent(chatId: number, parsed: any, refreshToken: s
     location: parsed.location,
     attendees: parsed.attendees,
     description: parsed.description,
+    calendarIds: calendars.map((c) => c.id),
     createdAt: Date.now(),
   })
 

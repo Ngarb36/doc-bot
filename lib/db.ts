@@ -188,6 +188,7 @@ export interface PendingEvent {
   location?: string
   attendees?: string[]
   description?: string
+  calendarIds?: string[]   // stored so callback only needs an index
   createdAt: number
 }
 
