@@ -227,7 +227,17 @@ export async function handleIntent(
       return res.content[0].type === "text" ? res.content[0].text : "לא הצלחתי לענות."
     }
 
-    default:
-      return "לא הבנתי. נסה שוב."
+    case "unknown":
+    default: {
+      const Anthropic2 = (await import("@anthropic-ai/sdk")).default
+      const ai2 = new Anthropic2({ apiKey: process.env.ANTHROPIC_API_KEY })
+      const res2 = await ai2.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1000,
+        system: "אתה עוזר אישי בשם דוק. ענה בעברית אלא אם המשתמש כתב באנגלית. היה קצר, ברור וידידותי.",
+        messages: [{ role: "user", content: "message" in intent ? intent.message : String(intent) }],
+      })
+      return res2.content[0].type === "text" ? res2.content[0].text : "לא הצלחתי לענות."
+    }
   }
 }

@@ -56,7 +56,7 @@ Available actions:
 - chat: general conversation or questions
 - create_event: {summary, start (ISO), end (ISO), attendees?: [emails], location?, description?}
 - list_events: {days: number}
-- add_reminder: {message, remindAt (ISO), recurrence?: "daily"|"weekly"|"monthly"}
+- add_reminder: {message: "the reminder text in Hebrew", remindAt: "ISO datetime string calculated from now", recurrence?: "daily"|"weekly"|"monthly"}
 - list_reminders: {}
 - add_task: {title, due?: ISO date}
 - list_tasks: {}
@@ -72,7 +72,8 @@ Available actions:
 - unknown: {}
 
 For events without explicit end time, add 1 hour.
-For Hebrew dates like "מחר", "היום", "בשישי" - convert to actual ISO dates.`,
+For Hebrew dates/times like "מחר", "היום", "בשישי", "עוד שעה", "בעוד 30 דקות" - calculate actual ISO datetime from the current time ${nowISO}.
+"עוד שעה" = current time + 1 hour. "מחר" = tomorrow same time. Always return valid ISO strings.`,
     messages: [{ role: "user", content: text }],
   })
 
