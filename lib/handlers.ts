@@ -73,13 +73,15 @@ export async function handleIntent(
       await saveLink({ url, type, title, summary, tags, senderName: String(chatId) })
       const emoji = TYPE_EMOJI[type] ?? "🔗"
       const source = (() => { try { return new URL(url).hostname.replace("www.", "") } catch { return url } })()
+      // Escape Markdown v1 special chars in dynamic content to prevent silent Telegram failures
+      const esc = (s: string) => s.replace(/[_*[\]`]/g, "\\$&")
       const lines = [
         `${emoji} *${type}* — נשמר ב-Notion!`,
         "",
-        title ? `📌 *כותרת:* ${title}` : null,
-        summary ? `📝 *סיכום:* ${summary}` : null,
-        `🌐 *מקור:* ${source}`,
-        tags.length > 0 ? `🏷 *תגיות:* ${tags.join(" · ")}` : null,
+        title ? `📌 *כותרת:* ${esc(title)}` : null,
+        summary ? `📝 *סיכום:* ${esc(summary)}` : null,
+        `🌐 *מקור:* ${esc(source)}`,
+        tags.length > 0 ? `🏷 *תגיות:* ${tags.map(esc).join(" · ")}` : null,
       ]
       return lines.filter(Boolean).join("\n")
     }
