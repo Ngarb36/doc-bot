@@ -23,6 +23,7 @@ export type Intent =
   | { action: "search_contacts"; query: string }
   | { action: "confirm_send_email" }
   | { action: "cancel_send_email" }
+  | { action: "show_all" }
   | { action: "connect_google" }
   | { action: "create_group"; groupName: string; memberNames: string[] }
   | { action: "add_to_group"; groupName: string; memberNames: string[] }
@@ -89,6 +90,10 @@ export async function routeMessage(
   }
 
   // Quick deterministic checks before hitting Claude
+  if (/^הצג(?:\s+הכל|\s+כל\s+הדברים?)?$/.test(lower.trim())) {
+    return { action: "show_all" }
+  }
+
   const deleteReminderMatch = lower.match(/^מחק\s+([\d,\s]+)$/)
   if (deleteReminderMatch) {
     const indices = deleteReminderMatch[1].split(/[,\s]+/).map(n => parseInt(n.trim())).filter(n => !isNaN(n))

@@ -9,6 +9,8 @@ import {
   getReminder, updateReminder, deleteReminder,
   getUserReminders,
   getUserGroups,
+  getUserLists,
+  getList as getListItems,
 } from "@/lib/db"
 import { routeMessage } from "@/lib/router"
 import { handleIntent } from "@/lib/handlers"
@@ -113,11 +115,16 @@ function formatDate(iso: string): string {
 
 function reminderKeyboard(reminderId: string) {
   return {
-    inline_keyboard: [[
-      { text: "✅ בוצע", callback_data: `rem_done:${reminderId}` },
-      { text: "😤 נודניק (+10)", callback_data: `rem_snooze10:${reminderId}` },
-      { text: "⏰ +שעה", callback_data: `rem_snooze60:${reminderId}` },
-    ]],
+    inline_keyboard: [
+      [
+        { text: "✅ בוצע", callback_data: `rem_done:${reminderId}` },
+        { text: "😤 +10 דק'", callback_data: `rem_snooze10:${reminderId}` },
+        { text: "⏰ +שעה", callback_data: `rem_snooze60:${reminderId}` },
+      ],
+      [
+        { text: "📅 מחר (24 שעות)", callback_data: `rem_snooze1440:${reminderId}` },
+      ],
+    ],
   }
 }
 
@@ -181,6 +188,17 @@ async function handleCallback(update: any) {
       const newTime = Date.now() + 60 * 60 * 1000
       await updateReminder(remId, { remindAt: newTime })
       await editMessage(chatId, messageId, `⏰ *תזכורת נדחתה לשעה*\n"${rem.message}"`)
+    }
+    return
+  }
+
+  if (data.startsWith("rem_snooze1440:")) {
+    const remId = data.replace("rem_snooze1440:", "")
+    const rem = await getReminder(remId)
+    if (rem) {
+      const newTime = Date.now() + 24 * 60 * 60 * 1000
+      await updateReminder(remId, { remindAt: newTime })
+      await editMessage(chatId, messageId, `📅 *תזכורת נדחתה ל-24 שעות*\n"${rem.message}"`)
     }
     return
   }
@@ -555,6 +573,53 @@ export async function POST(req: NextRequest) {
     const intent = await routeMessage(text, new Date(), history)
 
     // Intercept create_event — use router's extracted dates, then ask which calendar
+    // ── Show all ──────────────────────────────────────────────────────────────
+    if (intent.action === "show_all") {
+      const [reminders, groups, lists] = await Promise.all([
+        getUserReminders(chatId),
+        getUserGroups(chatId),
+        getUserLists(chatId),
+      ])
+
+      // Reminders
+      if (reminders.length > 0) {
+        const lines = reminders.map((r, i) =>
+          `${i + 1}. "${r.message}"\n   📅 ${formatDate(new Date(r.remindAt).toISOString())}`
+        )
+        const keyboard = {
+          inline_keyboard: reminders.map((r, i) => [
+            { text: `🗑 מחק ${i + 1}`, callback_data: `rem_delete:${r.id}` },
+          ]),
+        }
+        await sendMessage(chatId, `⏰ *תזכורות (${reminders.length}):*\n\n${lines.join("\n\n")}`, keyboard)
+      } else {
+        await sendMessage(chatId, "⏰ *תזכורות:* אין")
+      }
+
+      // Groups
+      if (groups.length > 0) {
+        const lines = groups.map(g => `*${g.name}* (${g.members.length} אנשים)\n${g.members.map(m => `   • ${m.name}`).join("\n")}`)
+        await sendMessage(chatId, `👥 *קבוצות (${groups.length}):*\n\n${lines.join("\n\n")}`)
+      } else {
+        await sendMessage(chatId, "👥 *קבוצות:* אין")
+      }
+
+      // Lists
+      if (lists.length > 0) {
+        for (const listName of lists) {
+          const items = await getListItems(chatId, listName)
+          if (items.length > 0) {
+            const lines = items.map((item, i) => `${i + 1}. ${item.text}`)
+            await sendMessage(chatId, `📝 *רשימת "${listName}" (${items.length}):*\n\n${lines.join("\n")}`)
+          }
+        }
+      } else {
+        await sendMessage(chatId, "📝 *רשימות:* אין")
+      }
+
+      return NextResponse.json({ ok: true })
+    }
+
     // ── List reminders with delete buttons ───────────────────────────────────
     if (intent.action === "list_reminders") {
       const reminders = await getUserReminders(chatId)
