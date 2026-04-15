@@ -119,6 +119,16 @@ function parseTimeWithExpr(msg: string): { remindAt: Date | null; timeExpr: stri
     if (m) return { remindAt: fn(m), timeExpr: m[0] }
   }
 
+  // Hebrew day name: "ביום ראשון ב11:20" / "יום שני ב-9:00"
+  for (const [name, dayNum] of Object.entries(HE_DAYS)) {
+    const re = new RegExp(`(?:ב)?(?:יום\\s+)?${name}[\\s\\S]*?(\\d{1,2})(?::(\\d{2}))?`)
+    m = msg.match(re)
+    if (m) {
+      const h = parseInt(m[1]), min = parseInt(m[2] ?? "0")
+      return { remindAt: nextWeeklyOccurrence(dayNum, h, min), timeExpr: m[0] }
+    }
+  }
+
   m = msg.match(/(מחר|tomorrow)[\s\S]*?(\d{1,2})(?::(\d{2}))?/)
   if (m) return { remindAt: zonedDate(1, parseInt(m[2]), parseInt(m[3] ?? "0")), timeExpr: m[0] }
 
