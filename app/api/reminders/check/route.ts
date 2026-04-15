@@ -26,6 +26,8 @@ async function sendReminderMessage(chatId: string, reminderId: string, text: str
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization")
+  console.log("[cron] received:", JSON.stringify(authHeader))
+  console.log("[cron] expected:", JSON.stringify(`Bearer ${process.env.CRON_SECRET}`))
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
