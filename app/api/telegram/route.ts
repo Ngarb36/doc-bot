@@ -240,7 +240,7 @@ async function handleCallback(update: any) {
       await deletePendingEvent(chatId)
       const linkStr = htmlLink ? ` [פתח](${htmlLink})` : ""
       await editMessage(chatId, messageId,
-        `נוצר: *${pending.title}*\n${formatDate(`${pending.date}T${pending.startTime}:00`)}${linkStr}`)
+        `נוצר: *${pending.title}*\n${formatDate(`${pending.date}T${pending.startTime}:00+03:00`)}${linkStr}`)
     } catch (e: any) {
       console.error("[doc-bot] cal_select error:", e?.message ?? e)
       await editMessage(chatId, messageId, "שגיאה ביצירת האירוע. נסה שוב.")

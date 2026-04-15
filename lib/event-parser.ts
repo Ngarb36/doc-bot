@@ -86,7 +86,7 @@ export async function parseEventFromImage(
 
 export function buildISODateTimes(event: ParsedEvent): { startDateTime: string; endDateTime: string } {
   return {
-    startDateTime: `${event.date}T${event.startTime}:00`,
-    endDateTime: `${event.date}T${event.endTime}:00`,
+    startDateTime: `${event.date}T${event.startTime}:00+03:00`,
+    endDateTime: `${event.date}T${event.endTime}:00+03:00`,
   }
 }
