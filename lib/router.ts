@@ -9,6 +9,7 @@ export type Intent =
   | { action: "list_events"; days: number }
   | { action: "add_reminder"; message: string; remindAt: string; recurrence?: string }
   | { action: "list_reminders" }
+  | { action: "delete_reminders"; indices: number[] }
   | { action: "add_task"; title: string; due?: string }
   | { action: "list_tasks" }
   | { action: "complete_task"; taskId: string }
@@ -88,6 +89,12 @@ export async function routeMessage(
   }
 
   // Quick deterministic checks before hitting Claude
+  const deleteReminderMatch = lower.match(/^מחק\s+([\d,\s]+)$/)
+  if (deleteReminderMatch) {
+    const indices = deleteReminderMatch[1].split(/[,\s]+/).map(n => parseInt(n.trim())).filter(n => !isNaN(n))
+    return { action: "delete_reminders", indices }
+  }
+
   const boughtMatch = lower.match(/^(?:קניתי|רכשתי|לקחתי)\s+(.+)/)
   if (boughtMatch) {
     return { action: "remove_from_list", item: boughtMatch[1].trim() }

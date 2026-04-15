@@ -7,6 +7,7 @@ import {
   getConversationHistory, appendConversationHistory,
   getPendingEvent, savePendingEvent, deletePendingEvent,
   getReminder, updateReminder, deleteReminder,
+  getUserReminders,
   getUserGroups,
 } from "@/lib/db"
 import { routeMessage } from "@/lib/router"
@@ -181,6 +182,14 @@ async function handleCallback(update: any) {
       await updateReminder(remId, { remindAt: newTime })
       await editMessage(chatId, messageId, `⏰ *תזכורת נדחתה לשעה*\n"${rem.message}"`)
     }
+    return
+  }
+
+  // ── Reminder delete ─────────────────────────────────────────────────────
+  if (data.startsWith("rem_delete:")) {
+    const remId = data.replace("rem_delete:", "")
+    await deleteReminder(chatId, remId)
+    await editMessage(chatId, messageId, "🗑 *תזכורת נמחקה.*")
     return
   }
 
@@ -546,6 +555,44 @@ export async function POST(req: NextRequest) {
     const intent = await routeMessage(text, new Date(), history)
 
     // Intercept create_event — use router's extracted dates, then ask which calendar
+    // ── List reminders with delete buttons ───────────────────────────────────
+    if (intent.action === "list_reminders") {
+      const reminders = await getUserReminders(chatId)
+      if (reminders.length === 0) {
+        await sendMessage(chatId, "⏰ אין תזכורות פעילות.")
+      } else {
+        const lines = reminders.map((r, i) =>
+          `${i + 1}. "${r.message}"\n   📅 ${formatDate(new Date(r.remindAt).toISOString())}`
+        )
+        const keyboard = {
+          inline_keyboard: reminders.map((r, i) => [
+            { text: `🗑 מחק ${i + 1}`, callback_data: `rem_delete:${r.id}` },
+          ]),
+        }
+        await sendMessage(chatId, `⏰ *התזכורות שלך:*\n\n${lines.join("\n\n")}`, keyboard)
+      }
+      return NextResponse.json({ ok: true })
+    }
+
+    // ── Delete reminders by index ─────────────────────────────────────────────
+    if (intent.action === "delete_reminders") {
+      const reminders = await getUserReminders(chatId)
+      const deleted: string[] = []
+      for (const idx of intent.indices) {
+        const r = reminders[idx - 1]
+        if (r) {
+          await deleteReminder(chatId, r.id)
+          deleted.push(`"${r.message}"`)
+        }
+      }
+      if (deleted.length === 0) {
+        await sendMessage(chatId, "❌ לא נמצאו תזכורות במספרים שציינת.")
+      } else {
+        await sendMessage(chatId, `🗑 *נמחקו:*\n${deleted.map(d => `• ${d}`).join("\n")}`)
+      }
+      return NextResponse.json({ ok: true })
+    }
+
     if (intent.action === "create_event" && user) {
       try {
         const { summary, start, end, attendees, location, description } = intent
