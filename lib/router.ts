@@ -94,6 +94,14 @@ export async function routeMessage(
     return { action: "show_all" }
   }
 
+  if (/(?:הצג|מה|תראה)\s+(?:ה)?קבוצות?|מה\s+הקבוצות?/i.test(lower)) {
+    return { action: "list_groups" }
+  }
+
+  if (/(?:הצג|מה|תראה)\s+(?:ה)?תזכורות?|מה\s+התזכורות?/i.test(lower)) {
+    return { action: "list_reminders" }
+  }
+
   const deleteReminderMatch = lower.match(/^מחק\s+([\d,\s]+)$/)
   if (deleteReminderMatch) {
     const indices = deleteReminderMatch[1].split(/[,\s]+/).map(n => parseInt(n.trim())).filter(n => !isNaN(n))

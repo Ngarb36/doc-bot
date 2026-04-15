@@ -108,8 +108,8 @@ function parseTimeWithExpr(msg: string): { remindAt: Date | null; timeExpr: stri
     { re: /(?:in|בעוד|עוד)\s+(\d+)\s*(?:minutes?|דקות?|דק'?)/, fn: (m) => addMinutes(now, parseInt(m[1])) },
     { re: /(?:in|בעוד|עוד)\s+(\d+)\s*(?:hours?|שעות?)/, fn: (m) => addMinutes(now, parseInt(m[1]) * 60) },
     { re: /(?:in|בעוד|עוד)\s+(\d+)\s*(?:days?|ימים?|יום)/, fn: (m) => addMinutes(now, parseInt(m[1]) * 60 * 24) },
-    { re: /(?:(?:עוד|בעוד)\s+)?דקה(?:\s|$)/, fn: () => addMinutes(now, 1) },
-    { re: /(?:(?:עוד|בעוד)\s+)?שעה(?:\s|$)/, fn: () => addMinutes(now, 60) },
+    { re: /(?:עוד|בעוד)\s+דקה(?:\s|$)/, fn: () => addMinutes(now, 1) },
+    { re: /(?:עוד|בעוד)\s+שעה(?:\s|$)/, fn: () => addMinutes(now, 60) },
     { re: /(?:עוד|בעוד)\s+חצי\s+שעה/, fn: () => addMinutes(now, 30) },
     { re: /(?:עוד|בעוד)\s+רבע\s+שעה/, fn: () => addMinutes(now, 15) },
   ]
@@ -117,6 +117,24 @@ function parseTimeWithExpr(msg: string): { remindAt: Date | null; timeExpr: stri
   for (const { re, fn } of relPatterns) {
     m = msg.match(re)
     if (m) return { remindAt: fn(m), timeExpr: m[0] }
+  }
+
+  // Absolute date: DD.MM or DD.MM.YYYY — e.g. "ל26.04 בשעה 11"
+  const dateM = msg.match(/(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?/)
+  if (dateM) {
+    const day = parseInt(dateM[1]), month = parseInt(dateM[2])
+    const year = dateM[3] ? (dateM[3].length === 2 ? 2000 + parseInt(dateM[3]) : parseInt(dateM[3])) : now.getFullYear()
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      const timeM = msg.match(/(?:ב-?|בשעה\s*)(\d{1,2})(?::(\d{2}))?/)
+      const h = timeM ? parseInt(timeM[1]) : 9
+      const min = timeM ? parseInt(timeM[2] ?? "0") : 0
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const targetStart = new Date(year, month - 1, day)
+      const daysFromNow = Math.round((targetStart.getTime() - todayStart.getTime()) / 86400000)
+      if (daysFromNow >= 0) {
+        return { remindAt: zonedDate(daysFromNow, h, min), timeExpr: dateM[0] }
+      }
+    }
   }
 
   // Hebrew day name: "ביום ראשון ב11:20" / "יום שני ב-9:00"
