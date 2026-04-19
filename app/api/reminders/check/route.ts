@@ -45,7 +45,8 @@ export async function GET(req: NextRequest) {
         await deleteReminder(reminder.chatId, reminder.id)
       }
     } else {
-      await deleteReminder(reminder.chatId, reminder.id)
+      // No response = auto-reschedule 24h after original fire time
+      await updateReminder(reminder.id, { remindAt: reminder.remindAt + 24 * 60 * 60 * 1000 })
     }
   }
 
