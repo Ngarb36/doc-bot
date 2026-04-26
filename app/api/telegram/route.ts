@@ -731,6 +731,42 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true })
       }
 
+      // create_event via voice needs the same attendee resolution as the text path
+      if (intent.action === "create_event" && user) {
+        const { summary, start, end, attendees, location, description } = intent
+        if (!start || !end || isNaN(new Date(start).getTime()) || isNaN(new Date(end).getTime())) {
+          await sendMessage(chatId, `🎤 _"${sanitized}"_\n\nלא הצלחתי להבין את התאריך. נסה שוב.`)
+          return NextResponse.json({ ok: true })
+        }
+        const toIsrael = (iso: string) => {
+          const d = new Date(iso)
+          return {
+            date: new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Jerusalem" }).format(d),
+            time: new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", hour12: false }).format(d),
+          }
+        }
+        const { date: datePart, time: startTime } = toIsrael(start)
+        const { time: endTime } = toIsrael(end)
+        const parsed = { title: summary, date: datePart, startTime, endTime, location, attendees, description }
+        await sendMessage(chatId, `🎤 _"${sanitized}"_`)
+        if (!attendees?.length) {
+          const suggested = await resolveEventAttendees(user.refreshToken, chatId, sanitized, summary)
+          if (suggested.length > 0) {
+            await savePendingEvent(chatId, { ...parsed, suggestedAttendees: suggested, createdAt: Date.now() })
+            const nameList = suggested.map(a => `*${a.name}* (${a.email})`).join("\n")
+            await sendMessage(chatId,
+              `📅 *${summary}*\n🗓 ${formatDate(`${datePart}T${startTime}:00`)}` +
+              (location ? `\n📍 ${location}` : "") +
+              `\n\nלזמן גם את:\n${nameList}?`,
+              inviteKeyboard()
+            )
+            return NextResponse.json({ ok: true })
+          }
+        }
+        await confirmOrCreateEvent(chatId, parsed, user.refreshToken)
+        return NextResponse.json({ ok: true })
+      }
+
       const reply = await handleIntent(intent, chatId, user?.refreshToken ?? null, sanitized)
       await appendConversationHistory(chatId, sanitized, reply)
       await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n${reply}`)
