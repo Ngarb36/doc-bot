@@ -105,7 +105,8 @@ export async function routeMessage(
   }
 
   const inviteMatch = lower.match(/^(?:תזמן|תזמין)\s+(?:את\s+)?(.+)/)
-  if (inviteMatch) {
+  const hasEventKeywords = /ליומן|זימון|לאורך|בשבת|ביום|בשעה|מחר|היום|הבא|הקרוב/.test(lower)
+  if (inviteMatch && !hasEventKeywords) {
     return { action: "invite_attendee", name: inviteMatch[1].trim() }
   }
 
