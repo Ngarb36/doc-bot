@@ -102,6 +102,26 @@ async function getFileUrl(fileId: string): Promise<string> {
   return `https://api.telegram.org/file/bot${BOT_TOKEN}/${data.result.file_path}`
 }
 
+async function transcribeVoice(fileId: string): Promise<string> {
+  const fileUrl = await getFileUrl(fileId)
+  const audioRes = await fetch(fileUrl)
+  const audioBuffer = await audioRes.arrayBuffer()
+
+  const formData = new FormData()
+  formData.append("file", new Blob([audioBuffer], { type: "audio/ogg" }), "voice.ogg")
+  formData.append("model", "whisper-1")
+  formData.append("language", "he")
+
+  const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: formData,
+  })
+  if (!whisperRes.ok) throw new Error(`Whisper ${whisperRes.status}: ${await whisperRes.text()}`)
+  const data = await whisperRes.json()
+  return (data.text ?? "").trim()
+}
+
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleString("he-IL", {
@@ -527,6 +547,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
+  // ── Voice handler ─────────────────────────────────────────────────────────
+  if (message.voice) {
+    await sendTyping(chatId)
+    try {
+      const transcribed = await transcribeVoice(message.voice.file_id)
+      if (!transcribed) {
+        await sendMessage(chatId, "🎤 לא הצלחתי להבין את ההקלטה. נסה שוב.")
+        return NextResponse.json({ ok: true })
+      }
+      const sanitized = sanitizeInput(transcribed)
+
+      if (isReminderMessage(sanitized)) {
+        const parsed = parseReminderText(sanitized)
+        if ("error" in parsed) {
+          await sendMessage(chatId, `⚠️ ${parsed.error}`)
+        } else {
+          await addReminder(chatId, { message: parsed.message, remindAt: parsed.remindAt, recurrence: parsed.recurrence })
+          const recStr = parsed.recurrence ? ` (חוזר)` : ""
+          await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n⏰ *תזכורת נשמרה!*\n"${parsed.message}"\n📅 ${formatDate(parsed.remindAt.toISOString())}${recStr}`)
+        }
+        return NextResponse.json({ ok: true })
+      }
+
+      const user = await getUser(chatId)
+      const history = await getConversationHistory(chatId)
+      const intent = await routeMessage(sanitized, new Date(), history)
+      const reply = await handleIntent(intent, chatId, user?.refreshToken ?? null, sanitized)
+      await appendConversationHistory(chatId, sanitized, reply)
+      await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n${reply}`)
+    } catch (e) {
+      console.error("[doc-bot] voice error:", e)
+      await sendMessage(chatId, "❌ שגיאה בעיבוד ההקלטה. נסה לשלוח הודעת טקסט.")
+    }
+    return NextResponse.json({ ok: true })
+  }
+
   if (!text) return NextResponse.json({ ok: true })
 
   await sendTyping(chatId)
@@ -654,6 +710,29 @@ export async function POST(req: NextRequest) {
         await sendMessage(chatId, "❌ לא נמצאו תזכורות במספרים שציינת.")
       } else {
         await sendMessage(chatId, `🗑 *נמחקו:*\n${deleted.map(d => `• ${d}`).join("\n")}`)
+      }
+      return NextResponse.json({ ok: true })
+    }
+
+    // ── Invite attendee to pending event ─────────────────────────────────────
+    if (intent.action === "invite_attendee") {
+      if (!user) {
+        await sendMessage(chatId, "⚠️ לא מחובר ל-Google. שלח /connect.")
+        return NextResponse.json({ ok: true })
+      }
+      const pending = await getPendingEvent(chatId)
+      const contacts = await searchContacts(user.refreshToken, intent.name)
+      if (contacts.length === 0) {
+        await sendMessage(chatId, `❌ לא נמצא איש קשר בשם "${intent.name}".`)
+        return NextResponse.json({ ok: true })
+      }
+      const contact = contacts[0]
+      if (pending) {
+        pending.attendees = [...(pending.attendees ?? []), contact.email]
+        await savePendingEvent(chatId, pending)
+        await sendMessage(chatId, `✅ ${contact.name} יוזמן לאירוע "${pending.title}".`)
+      } else {
+        await sendMessage(chatId, `✅ ${contact.name} (${contact.email}) — אין אירוע ממתין להוסיף אליו.`)
       }
       return NextResponse.json({ ok: true })
     }
