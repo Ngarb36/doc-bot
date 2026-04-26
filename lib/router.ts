@@ -63,11 +63,19 @@ Tomorrow: ${new Date(now.getTime() + 86400000).toISOString().split("T")[0]}
 Next Sunday: ${nextSunday.toISOString().split("T")[0]}
 Timezone: Asia/Jerusalem (UTC+3)
 
+CRITICAL Hebrew date rules:
+- "הקרוב" = the nearest upcoming occurrence of that day (may be this week)
+- "הבא" = the occurrence in NEXT week (always 7+ days away, never this week)
+- "לאורך כל היום" / "כל היום" / "all day" = start 08:00, end 20:00 same day
+- If no time given for an all-day event, use 08:00–20:00
+
 Day name to day-of-week offset from today (${dayName}):
 ${Object.entries(HEBREW_DAYS).map(([name, dow]) => {
-  const diff = (dow - now.getDay() + 7) % 7 || 7
-  const date = new Date(now.getTime() + diff * 86400000)
-  return `יום ${name} הקרוב = ${date.toISOString().split("T")[0]}`
+  const diffNearest = (dow - now.getDay() + 7) % 7 || 7
+  const diffNext = diffNearest + 7
+  const dateNearest = new Date(now.getTime() + diffNearest * 86400000)
+  const dateNext = new Date(now.getTime() + diffNext * 86400000)
+  return `יום ${name} הקרוב = ${dateNearest.toISOString().split("T")[0]} | יום ${name} הבא = ${dateNext.toISOString().split("T")[0]}`
 }).join("\n")}
 יום ראשון עוד שבוע = ${new Date(nextSunday.getTime() + 7 * 86400000).toISOString().split("T")[0]}`
 }
