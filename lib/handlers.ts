@@ -27,8 +27,6 @@ import {
   getUserGroups,
   deleteGroup,
   addMembersToGroup,
-  getPendingEvent,
-  savePendingEvent,
 } from "./db"
 import type { Intent } from "./router"
 
@@ -335,20 +333,6 @@ export async function handleIntent(
       const token = await createConnectToken(chatId)
       const url = `${process.env.NEXTAUTH_URL}/connect?token=${token}`
       return `🔗 *חיבור Google*\n\nלחץ על הקישור כדי להתחבר:\n${url}\n\n_הקישור תקף ל-10 דקות._`
-    }
-
-    case "invite_attendee": {
-      if (!refreshToken) return "⚠️ לא מחובר ל-Google. שלח /connect."
-      const contacts = await searchContacts(refreshToken, intent.name)
-      if (contacts.length === 0) return `❌ לא נמצא איש קשר בשם "${intent.name}".`
-      const contact = contacts[0]
-      const pending = await getPendingEvent(chatId)
-      if (pending) {
-        pending.attendees = [...(pending.attendees ?? []), contact.email]
-        await savePendingEvent(chatId, pending)
-        return `✅ ${contact.name} יוזמן לאירוע "${pending.title}".`
-      }
-      return `✅ ${contact.name} (${contact.email}) — אין אירוע ממתין להוסיף אליו.`
     }
 
     // ── Chat ──────────────────────────────────────────────────────────────────

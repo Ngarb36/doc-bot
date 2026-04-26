@@ -573,6 +573,26 @@ export async function POST(req: NextRequest) {
       const user = await getUser(chatId)
       const history = await getConversationHistory(chatId)
       const intent = await routeMessage(sanitized, new Date(), history)
+
+      // "name" in intent is the type guard for invite_attendee (its unique property)
+      if ("name" in intent && user) {
+        const pending = await getPendingEvent(chatId)
+        const contacts = await searchContacts(user.refreshToken, (intent as { name: string }).name)
+        if (contacts.length === 0) {
+          await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n❌ לא נמצא איש קשר בשם "${(intent as { name: string }).name}".`)
+          return NextResponse.json({ ok: true })
+        }
+        const contact = contacts[0]
+        if (pending) {
+          pending.attendees = [...(pending.attendees ?? []), contact.email]
+          await savePendingEvent(chatId, pending)
+          await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n✅ ${contact.name} יוזמן לאירוע "${pending.title}".`)
+        } else {
+          await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n✅ ${contact.name} (${contact.email}) — אין אירוע ממתין.`)
+        }
+        return NextResponse.json({ ok: true })
+      }
+
       const reply = await handleIntent(intent, chatId, user?.refreshToken ?? null, sanitized)
       await appendConversationHistory(chatId, sanitized, reply)
       await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n${reply}`)
@@ -627,6 +647,25 @@ export async function POST(req: NextRequest) {
     // ── Route everything else ───────────────────────────────────────────────
     const history = await getConversationHistory(chatId)
     const intent = await routeMessage(text, new Date(), history)
+
+    // ── Invite attendee (type guard via unique "name" property, avoids TS2367) ──
+    if ("name" in intent && user) {
+      const pending = await getPendingEvent(chatId)
+      const contacts = await searchContacts(user.refreshToken, (intent as { name: string }).name)
+      if (contacts.length === 0) {
+        await sendMessage(chatId, `❌ לא נמצא איש קשר בשם "${(intent as { name: string }).name}".`)
+        return NextResponse.json({ ok: true })
+      }
+      const contact = contacts[0]
+      if (pending) {
+        pending.attendees = [...(pending.attendees ?? []), contact.email]
+        await savePendingEvent(chatId, pending)
+        await sendMessage(chatId, `✅ ${contact.name} יוזמן לאירוע "${pending.title}".`)
+      } else {
+        await sendMessage(chatId, `✅ ${contact.name} (${contact.email}) — אין אירוע ממתין להוסיף אליו.`)
+      }
+      return NextResponse.json({ ok: true })
+    }
 
     // Intercept create_event — use router's extracted dates, then ask which calendar
     // ── Show all ──────────────────────────────────────────────────────────────
