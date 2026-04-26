@@ -628,6 +628,29 @@ export async function POST(req: NextRequest) {
     const history = await getConversationHistory(chatId)
     const intent = await routeMessage(text, new Date(), history)
 
+    // ── Invite attendee to pending event (must be first to avoid TS narrowing) ─
+    if (intent.action === "invite_attendee") {
+      if (!user) {
+        await sendMessage(chatId, "⚠️ לא מחובר ל-Google. שלח /connect.")
+        return NextResponse.json({ ok: true })
+      }
+      const pending = await getPendingEvent(chatId)
+      const contacts = await searchContacts(user.refreshToken, intent.name)
+      if (contacts.length === 0) {
+        await sendMessage(chatId, `❌ לא נמצא איש קשר בשם "${intent.name}".`)
+        return NextResponse.json({ ok: true })
+      }
+      const contact = contacts[0]
+      if (pending) {
+        pending.attendees = [...(pending.attendees ?? []), contact.email]
+        await savePendingEvent(chatId, pending)
+        await sendMessage(chatId, `✅ ${contact.name} יוזמן לאירוע "${pending.title}".`)
+      } else {
+        await sendMessage(chatId, `✅ ${contact.name} (${contact.email}) — אין אירוע ממתין להוסיף אליו.`)
+      }
+      return NextResponse.json({ ok: true })
+    }
+
     // Intercept create_event — use router's extracted dates, then ask which calendar
     // ── Show all ──────────────────────────────────────────────────────────────
     if (intent.action === "show_all") {
@@ -710,29 +733,6 @@ export async function POST(req: NextRequest) {
         await sendMessage(chatId, "❌ לא נמצאו תזכורות במספרים שציינת.")
       } else {
         await sendMessage(chatId, `🗑 *נמחקו:*\n${deleted.map(d => `• ${d}`).join("\n")}`)
-      }
-      return NextResponse.json({ ok: true })
-    }
-
-    // ── Invite attendee to pending event ─────────────────────────────────────
-    if (intent.action === "invite_attendee") {
-      if (!user) {
-        await sendMessage(chatId, "⚠️ לא מחובר ל-Google. שלח /connect.")
-        return NextResponse.json({ ok: true })
-      }
-      const pending = await getPendingEvent(chatId)
-      const contacts = await searchContacts(user.refreshToken, intent.name)
-      if (contacts.length === 0) {
-        await sendMessage(chatId, `❌ לא נמצא איש קשר בשם "${intent.name}".`)
-        return NextResponse.json({ ok: true })
-      }
-      const contact = contacts[0]
-      if (pending) {
-        pending.attendees = [...(pending.attendees ?? []), contact.email]
-        await savePendingEvent(chatId, pending)
-        await sendMessage(chatId, `✅ ${contact.name} יוזמן לאירוע "${pending.title}".`)
-      } else {
-        await sendMessage(chatId, `✅ ${contact.name} (${contact.email}) — אין אירוע ממתין להוסיף אליו.`)
       }
       return NextResponse.json({ ok: true })
     }
