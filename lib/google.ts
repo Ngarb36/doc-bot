@@ -79,6 +79,99 @@ export async function listCalendarEvents(
   }))
 }
 
+export async function searchCalendarEvents(
+  refreshToken: string,
+  query: string,
+  dateHint?: string
+): Promise<{ id: string; calendarId: string; summary: string; start: string; end: string; attendees: string[] }[]> {
+  const auth = getAuthenticatedClient(refreshToken)
+  const calendar = google.calendar({ version: "v3", auth })
+
+  let timeMin: string
+  let timeMax: string
+  if (dateHint) {
+    const d = new Date(dateHint + "T00:00:00+03:00")
+    timeMin = new Date(d.getTime() - 24 * 3600000).toISOString()
+    timeMax = new Date(d.getTime() + 48 * 3600000).toISOString()
+  } else {
+    timeMin = new Date().toISOString()
+    timeMax = new Date(Date.now() + 90 * 24 * 3600000).toISOString()
+  }
+
+  const calList = await calendar.calendarList.list({ minAccessRole: "writer" })
+  const calIds = (calList.data.items ?? []).map(c => c.id ?? "primary")
+
+  const results: { id: string; calendarId: string; summary: string; start: string; end: string; attendees: string[] }[] = []
+
+  await Promise.all(calIds.map(async (calId) => {
+    try {
+      const res = await calendar.events.list({
+        calendarId: calId,
+        q: query,
+        timeMin,
+        timeMax,
+        singleEvents: true,
+        orderBy: "startTime",
+        maxResults: 5,
+      })
+      for (const e of res.data.items ?? []) {
+        if (!e.id || !e.summary) continue
+        results.push({
+          id: e.id,
+          calendarId: calId,
+          summary: e.summary,
+          start: e.start?.dateTime ?? e.start?.date ?? "",
+          end: e.end?.dateTime ?? e.end?.date ?? "",
+          attendees: (e.attendees ?? []).map(a => a.email ?? "").filter(Boolean),
+        })
+      }
+    } catch { /* skip unreadable calendars */ }
+  }))
+
+  return results.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+}
+
+export async function updateCalendarEvent(
+  refreshToken: string,
+  calendarId: string,
+  eventId: string,
+  patch: { summary?: string; start?: string; end?: string; addAttendeeEmails?: string[] }
+): Promise<string | null> {
+  const auth = getAuthenticatedClient(refreshToken)
+  const calendar = google.calendar({ version: "v3", auth })
+
+  const current = await calendar.events.get({ calendarId, eventId })
+  const requestBody: any = {}
+
+  if (patch.summary) requestBody.summary = patch.summary
+
+  if (patch.start) {
+    requestBody.start = { dateTime: patch.start, timeZone: "Asia/Jerusalem" }
+    if (!patch.end) {
+      const dur =
+        new Date(current.data.end?.dateTime ?? current.data.end?.date ?? "").getTime() -
+        new Date(current.data.start?.dateTime ?? current.data.start?.date ?? "").getTime()
+      requestBody.end = { dateTime: new Date(new Date(patch.start).getTime() + dur).toISOString(), timeZone: "Asia/Jerusalem" }
+    }
+  }
+  if (patch.end) requestBody.end = { dateTime: patch.end, timeZone: "Asia/Jerusalem" }
+
+  if (patch.addAttendeeEmails?.length) {
+    const existing = (current.data.attendees ?? []).map(a => a.email ?? "").filter(Boolean)
+    const merged = Array.from(new Set([...existing, ...patch.addAttendeeEmails]))
+    requestBody.attendees = merged.map(email => ({ email }))
+  }
+
+  const res = await calendar.events.patch({
+    calendarId,
+    eventId,
+    sendUpdates: patch.addAttendeeEmails?.length ? "all" : "none",
+    requestBody,
+  })
+
+  return res.data.htmlLink ?? null
+}
+
 // ── Google Tasks ──────────────────────────────────────────────────────────────
 
 export async function listTasks(refreshToken: string): Promise<

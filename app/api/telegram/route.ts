@@ -18,14 +18,18 @@ import {
   savePendingContact,
   getPendingContact,
   deletePendingContact,
+  savePendingEventEdit,
+  getPendingEventEdit,
+  deletePendingEventEdit,
   getUserLists,
   getList as getListItems,
 } from "@/lib/db"
+import type { CalendarEventRef } from "@/lib/db"
 import { routeMessage } from "@/lib/router"
 import { handleIntent } from "@/lib/handlers"
 import { parseEventFromImage, buildISODateTimes } from "@/lib/event-parser"
 import { isReminderMessage, parseReminderText } from "@/lib/reminder-parser"
-import { createCalendarEvent, listUserCalendars, searchContacts } from "@/lib/google"
+import { createCalendarEvent, listUserCalendars, searchContacts, searchCalendarEvents, updateCalendarEvent } from "@/lib/google"
 import { addReminder } from "@/lib/db"
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
@@ -213,6 +217,26 @@ function inviteKeyboard() {
   }
 }
 
+// ── Edit event keyboards ──────────────────────────────────────────────────────
+
+function editPickKeyboard(candidates: CalendarEventRef[]) {
+  return {
+    inline_keyboard: candidates.map((c, i) => [{
+      text: `📅 ${c.summary} — ${formatDate(c.start)}`,
+      callback_data: `ev_pick:${i}`,
+    }]),
+  }
+}
+
+function editAddKeyboard() {
+  return {
+    inline_keyboard: [[
+      { text: "✅ אישור", callback_data: "ev_add_ok" },
+      { text: "❌ ביטול", callback_data: "ev_add_cancel" },
+    ]],
+  }
+}
+
 // ── Callback query handler ────────────────────────────────────────────────────
 
 async function handleCallback(update: any) {
@@ -343,6 +367,54 @@ async function handleCallback(update: any) {
   if (data === "contact_cancel") {
     await deletePendingContact(chatId)
     await editMessage(chatId, messageId, "❌ בוטל.")
+    return
+  }
+
+  // ── Edit event candidate pick ───────────────────────────────────────────
+  if (data.startsWith("ev_pick:")) {
+    const idx = parseInt(data.replace("ev_pick:", ""), 10)
+    const pendingEdit = await getPendingEventEdit(chatId)
+    if (!pendingEdit?.candidates?.[idx]) {
+      await editMessage(chatId, messageId, "⏰ פג תוקף. נסה שוב.")
+      return
+    }
+    const event = pendingEdit.candidates[idx]
+    const user = await getUser(chatId)
+    if (!user) { await sendMessage(chatId, "⚠️ לא מחובר ל-Google."); return }
+    await deletePendingEventEdit(chatId)
+    await editMessage(chatId, messageId, `✏️ *${event.summary}* — עורך...`)
+    await applyEventEdit(chatId, user.refreshToken, event, {
+      ...pendingEdit.changes,
+      addAttendees: pendingEdit.addAttendeeNames,
+    })
+    return
+  }
+
+  // ── Edit event attendee confirmation ─────────────────────────────────────
+  if (data === "ev_add_ok") {
+    const pendingEdit = await getPendingEventEdit(chatId)
+    if (!pendingEdit?.event || !pendingEdit.addEmails) {
+      await editMessage(chatId, messageId, "⏰ פג תוקף. נסה שוב.")
+      return
+    }
+    const user = await getUser(chatId)
+    if (!user) { await sendMessage(chatId, "⚠️ לא מחובר ל-Google."); return }
+    const htmlLink = await updateCalendarEvent(user.refreshToken, pendingEdit.event.calendarId, pendingEdit.event.id, {
+      ...pendingEdit.changes,
+      addAttendeeEmails: pendingEdit.addEmails.map(a => a.email),
+    })
+    await deletePendingEventEdit(chatId)
+    const namesList = pendingEdit.addEmails.map(a => `*${a.name}*`).join(", ")
+    const linkStr = htmlLink ? ` [פתח](${htmlLink})` : ""
+    await editMessage(chatId, messageId,
+      `✅ *אירוע עודכן!*\n📅 *${pendingEdit.event.summary}*\n👥 נוספו: ${namesList}${linkStr}`
+    )
+    return
+  }
+
+  if (data === "ev_add_cancel") {
+    await deletePendingEventEdit(chatId)
+    await editMessage(chatId, messageId, "❌ עריכה בוטלה.")
     return
   }
 
@@ -519,6 +591,79 @@ async function resolveEventAttendees(
     return found
   } catch {
     return []
+  }
+}
+
+// ── Event edit helper ─────────────────────────────────────────────────────────
+// Resolves attendees (groups + contacts) then either patches directly or shows
+// a confirmation keyboard for the attendee additions.
+
+async function applyEventEdit(
+  chatId: number,
+  refreshToken: string,
+  event: CalendarEventRef,
+  changes: { summary?: string; start?: string; end?: string; addAttendees?: string[] }
+) {
+  const { summary, start, end, addAttendees } = changes
+  const baseChanges = { summary, start, end }
+
+  if (addAttendees?.length) {
+    const resolved: { name: string; email: string }[] = []
+    const unresolved: string[] = []
+    const lower = addAttendees.join(" ").toLowerCase()
+
+    // Check saved groups first
+    const groups = await getUserGroups(chatId)
+    let usedGroup = false
+    for (const g of groups) {
+      if (lower.includes(g.name.toLowerCase()) && g.members.length > 0) {
+        resolved.push(...g.members)
+        usedGroup = true
+        break
+      }
+    }
+
+    if (!usedGroup) {
+      for (const name of addAttendees) {
+        const contacts = await searchContacts(refreshToken, name)
+        if (contacts.length === 1) resolved.push(contacts[0])
+        else unresolved.push(name)
+      }
+    }
+
+    if (resolved.length > 0) {
+      await savePendingEventEdit(chatId, {
+        event,
+        addEmails: resolved,
+        changes: baseChanges,
+        createdAt: Date.now(),
+      })
+      const existingStr = event.attendees.length > 0
+        ? `\n👥 *קיים:* ${event.attendees.join(", ")}`
+        : ""
+      const addList = resolved.map(a => `• *${a.name}* (${a.email})`).join("\n")
+      await sendMessage(chatId,
+        `📅 *${event.summary}*\n🗓 ${formatDate(event.start)}${existingStr}\n\nלהוסיף:\n${addList}?`,
+        editAddKeyboard()
+      )
+      if (unresolved.length > 0) {
+        await sendMessage(chatId, `⚠️ לא נמצאו: ${unresolved.join(", ")}`)
+      }
+      return
+    }
+
+    if (unresolved.length > 0) {
+      await sendMessage(chatId, `❌ לא נמצאו אנשי קשר: ${unresolved.join(", ")}`)
+    }
+  }
+
+  // Apply title / time changes directly (no confirmation needed)
+  if (summary || start || end) {
+    const htmlLink = await updateCalendarEvent(refreshToken, event.calendarId, event.id, baseChanges)
+    const newTitle = summary ?? event.summary
+    const newStart = start ?? event.start
+    const linkStr = htmlLink ? `\n🔗 [פתח ביומן](${htmlLink})` : ""
+    await sendMessage(chatId, `✅ *אירוע עודכן!*\n📅 *${newTitle}*\n🕐 ${formatDate(newStart)}${linkStr}`)
   }
 }
 
@@ -767,6 +912,31 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true })
       }
 
+      // edit_event via voice — same flow as text path
+      if (intent.action === "edit_event" && user) {
+        try {
+          const { query, date, changes } = intent
+          await sendMessage(chatId, `🎤 _"${sanitized}"_`)
+          const events = await searchCalendarEvents(user.refreshToken, query, date)
+          if (events.length === 0) {
+            await sendMessage(chatId, `❌ לא נמצא אירוע בשם "${query}"${date ? ` ב-${date}` : ""}.`)
+          } else if (events.length > 1) {
+            await savePendingEventEdit(chatId, {
+              candidates: events,
+              addAttendeeNames: changes.addAttendees,
+              changes: { summary: changes.summary, start: changes.start, end: changes.end },
+              createdAt: Date.now(),
+            })
+            await sendMessage(chatId, `מצאתי ${events.length} אירועים — בחר:`, editPickKeyboard(events))
+          } else {
+            await applyEventEdit(chatId, user.refreshToken, events[0], changes)
+          }
+        } catch (e: any) {
+          await sendMessage(chatId, `❌ שגיאה בעריכת האירוע: ${String(e?.message ?? e).slice(0, 150)}`)
+        }
+        return NextResponse.json({ ok: true })
+      }
+
       const reply = await handleIntent(intent, chatId, user?.refreshToken ?? null, sanitized)
       await appendConversationHistory(chatId, sanitized, reply)
       await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n${reply}`)
@@ -945,6 +1115,36 @@ export async function POST(req: NextRequest) {
         `👥 *קבוצה: ${group.name}*\n\n${memberLines}`,
         groupKeyboard(group.members)
       )
+      return NextResponse.json({ ok: true })
+    }
+
+    // ── Edit existing event ───────────────────────────────────────────────────
+    if (intent.action === "edit_event" && user) {
+      try {
+        const { query, date, changes } = intent
+        const events = await searchCalendarEvents(user.refreshToken, query, date)
+
+        if (events.length === 0) {
+          await sendMessage(chatId, `❌ לא נמצא אירוע בשם "${query}"${date ? ` ב-${date}` : ""}.`)
+          return NextResponse.json({ ok: true })
+        }
+
+        if (events.length > 1) {
+          await savePendingEventEdit(chatId, {
+            candidates: events,
+            addAttendeeNames: changes.addAttendees,
+            changes: { summary: changes.summary, start: changes.start, end: changes.end },
+            createdAt: Date.now(),
+          })
+          await sendMessage(chatId, `מצאתי ${events.length} אירועים — בחר:`, editPickKeyboard(events))
+          return NextResponse.json({ ok: true })
+        }
+
+        await applyEventEdit(chatId, user.refreshToken, events[0], changes)
+      } catch (e: any) {
+        console.error("[doc-bot] edit_event error:", e?.message ?? e)
+        await sendMessage(chatId, "❌ שגיאה בעריכת האירוע. נסה שוב.")
+      }
       return NextResponse.json({ ok: true })
     }
 

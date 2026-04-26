@@ -305,6 +305,38 @@ export interface PendingContactState {
   candidates: { name: string; email: string }[]
 }
 
+// ── Pending event edits ────────────────────────────────────────────────────────
+
+export interface CalendarEventRef {
+  id: string
+  calendarId: string
+  summary: string
+  start: string
+  end: string
+  attendees: string[]
+}
+
+export interface PendingEventEdit {
+  candidates?: CalendarEventRef[]
+  event?: CalendarEventRef
+  addEmails?: { name: string; email: string }[]
+  addAttendeeNames?: string[]
+  changes: { summary?: string; start?: string; end?: string }
+  createdAt: number
+}
+
+export async function savePendingEventEdit(chatId: string | number, edit: PendingEventEdit): Promise<void> {
+  await kv.set(`${P}pending_edit:${chatId}`, edit, { ex: 600 })
+}
+
+export async function getPendingEventEdit(chatId: string | number): Promise<PendingEventEdit | null> {
+  return kv.get<PendingEventEdit>(`${P}pending_edit:${chatId}`)
+}
+
+export async function deletePendingEventEdit(chatId: string | number): Promise<void> {
+  await kv.del(`${P}pending_edit:${chatId}`)
+}
+
 export async function savePendingContact(chatId: string | number, state: PendingContactState): Promise<void> {
   await kv.set(`${P}pending_contact:${chatId}`, state, { ex: 3600 })
 }

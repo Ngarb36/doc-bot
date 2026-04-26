@@ -31,6 +31,7 @@ export type Intent =
   | { action: "show_group"; groupName: string }
   | { action: "delete_group"; groupName: string }
   | { action: "invite_attendee"; name: string }
+  | { action: "edit_event"; query: string; date?: string; changes: { summary?: string; start?: string; end?: string; addAttendees?: string[] } }
   | { action: "unknown" }
 
 const URL_REGEX = /https?:\/\/[^\s]+/gi
@@ -229,6 +230,7 @@ Available actions:
 - add_to_group: {groupName: "group name", memberNames: ["name1"]}
 - list_groups: {}
 - delete_group: {groupName: "group name"}
+- edit_event: {query: "event title to find", date?: "YYYY-MM-DD", changes: {summary?: "new title", start?: "ISO datetime +03:00", end?: "ISO datetime +03:00", addAttendees?: ["name or group name"]}}
 - unknown: {}
 
 IMPORTANT date rules:
@@ -254,7 +256,11 @@ CRITICAL: "רשימת מטלות", "מטלות", "משימות", "tasks" always 
 - "צור קבוצה / הוסף קבוצה" → create_group
 - "הוסף [שם] לקבוצה [X] / הכנס [שם] לקבוצה" → add_to_group
 - "הצג קבוצות / מה הקבוצות" → list_groups
-- "מחק קבוצה" → delete_group`,
+- "מחק קבוצה" → delete_group
+- "לזימון/לאירוע X שנה שם ל-Y" → edit_event, changes.summary="Y"
+- "לזימון/לאירוע X שנה שעה ל-Y" → edit_event, changes.start (and end if given)
+- "לזימון/לאירוע X תזמן את Y / הוסף Y" → edit_event, changes.addAttendees=["Y"]
+- edit_event.query: event title only, no date/action words. date: YYYY-MM-DD if mentioned.`,
     messages,
   })
 
