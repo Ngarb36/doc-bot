@@ -596,9 +596,10 @@ export async function POST(req: NextRequest) {
       const reply = await handleIntent(intent, chatId, user?.refreshToken ?? null, sanitized)
       await appendConversationHistory(chatId, sanitized, reply)
       await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n${reply}`)
-    } catch (e) {
+    } catch (e: any) {
       console.error("[doc-bot] voice error:", e)
-      await sendMessage(chatId, "❌ שגיאה בעיבוד ההקלטה. נסה לשלוח הודעת טקסט.")
+      const msg = String(e?.message ?? e ?? "unknown")
+      await sendMessage(chatId, `❌ שגיאה בעיבוד ההקלטה: ${msg.slice(0, 200)}`)
     }
     return NextResponse.json({ ok: true })
   }
