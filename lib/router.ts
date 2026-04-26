@@ -183,7 +183,7 @@ Return exactly: {"action":"add_task","title":"<task title>","due":"<ISO date YYY
       system: `You extract calendar event details from Hebrew text. Return ONLY valid JSON, no markdown.
 ${dateContext}
 Return exactly: {"action":"create_event","summary":"<title>","start":"<ISO datetime +03:00>","end":"<ISO datetime +03:00>"}
-- summary: the event title/name ONLY. Do NOT include attendee instructions like "תזמן את X", "תזמין את X", "invite X", or group names. Strip those completely.
+- summary: the event title/name ONLY. If the text says "בשם X" or "שם האירוע X" or "קרא לו X" or "תקרא לו X", the summary is X only. Do NOT include attendee instructions like "תזמן את X", "תזמין את X", "invite X", or group names. Strip those completely.
 - If no end time, add 1 hour to start.
 - Always full ISO 8601 with timezone: "2026-04-13T16:00:00+03:00"`,
       messages: [{ role: "user", content: normalizedText }],
@@ -211,7 +211,7 @@ Respond ONLY with valid JSON, no markdown.
 
 Available actions:
 - chat: general conversation or questions
-- create_event: {summary: "event title only (NOT attendee names/groups)", start (ISO 8601 with time), end (ISO 8601 with time), attendees?: [emails], location?, description?}
+- create_event: {summary: "event title only — if text says 'בשם X'/'קרא לו X'/'תקרא לו X' use X as summary. Do NOT include attendee names or groups.", start (ISO 8601 with time), end (ISO 8601 with time), attendees?: [emails], location?, description?}
 - list_events: {days: number}
 - add_reminder: {message: "reminder text", remindAt: "ISO 8601 datetime", recurrence?: "daily"|"weekly"|"monthly"}
 - list_reminders: {}

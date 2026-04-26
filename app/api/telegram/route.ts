@@ -576,8 +576,8 @@ async function resolveEventAttendees(
     const res = await ai.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 80,
-      system: "Extract person names from Hebrew event text. Return a JSON array of name strings only, e.g. [\"דני\",\"שי\"]. Return [] if no person names found. Do NOT include the event creator.",
-      messages: [{ role: "user", content: summary }],
+      system: "Extract person names that should be invited/attendees from Hebrew text. Return a JSON array of name strings only, e.g. [\"דני\",\"שי\"]. Return [] if no invitees found. Look for patterns like 'תזמן את X', 'הזמן את X', 'עם X'. Do NOT include the event title, creator, or location names.",
+      messages: [{ role: "user", content: text }],
     })
     const raw = res.content[0].type === "text" ? res.content[0].text.trim() : "[]"
     const names: string[] = JSON.parse(raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim())
