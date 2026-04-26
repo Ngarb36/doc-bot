@@ -175,7 +175,7 @@ Return exactly: {"action":"add_task","title":"<task title>","due":"<ISO date YYY
 
   // Calendar creation — catch "תוסיף/הוסף/קבע ליומן" patterns with a focused Claude call
   // so that event titles like "דייט", "ריצה", "שינה" are never misclassified as chat
-  const isCalCreate = /(?:(?:תוסיף|הוסף|קבע|תקבע|צור|תצור|שים|רשום|תרשום|הכנס|קבוע|שמור)\s+(?:לי\s+)?(?:ל(?:ה)?)?יומן)|(?:יומן[:\s])|(?:פגישה|ישיבה|תור|מפגש|אירוע|דייט|ריצה|אימון|ארוחה)\s+(?:מחר|היום|ב-?\d|ב(?:יום|שעה))/i.test(lower)
+  const isCalCreate = /(?:(?:תוסיף|הוסף|קבע|תקבע|צור|תצור|שים|רשום|תרשום|הכנס|קבוע|שמור|תוציא|הוצא)\s+(?:לי\s+)?(?:(?:ל(?:ה)?)?יומן|זימון))|(?:יומן[:\s])|(?:פגישה|ישיבה|תור|מפגש|אירוע|דייט|ריצה|אימון|ארוחה|זימון)\s+(?:מחר|היום|ב-?\d|ב(?:יום|שעה))/i.test(lower)
   if (isCalCreate) {
     const response2 = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
@@ -243,7 +243,7 @@ IMPORTANT date rules:
 - Default meeting time is 09:00 if only date given with no time
 
 Intent classification hints (Hebrew):
-- "תוסיף/הוסף (ל)יומן / צור/קבע פגישה/ישיבה/תור/מפגש/אירוע" → create_event (even for informal titles like דייט/ריצה/שינה)
+- "תוסיף/הוסף (ל)יומן / צור/קבע/תוציא פגישה/ישיבה/תור/מפגש/אירוע/זימון" → create_event (even for informal titles like דייט/ריצה/שינה)
 - "תזכיר לי / תזכורת" → add_reminder
 - "תוסיף/הוסף משימה / תוסיף לרשימת מטלות / מטלה חדשה / task" → add_task
 - "מה המשימות / רשימת מטלות / מה יש לי לעשות / google tasks / tasks" → list_tasks

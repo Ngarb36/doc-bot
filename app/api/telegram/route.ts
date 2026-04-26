@@ -989,6 +989,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    // ── Pending-state-aware confirmations ("כן"/"לא" before routeMessage) ────
+    // Must run before routeMessage which has a blanket "כן"→confirm_send_email check
+    const lowerText = text.toLowerCase().trim()
+    const isYes = lowerText === "כן" || lowerText === "yes" || lowerText === "אישור"
+    const isNo  = lowerText === "לא" || lowerText === "no"  || lowerText === "ביטול" || lowerText === "בטל"
+    if (isYes || isNo) {
+      const pendingContact = await getPendingContact(chatId)
+      if (pendingContact?.candidates?.length) {
+        if (isYes) {
+          const contact = pendingContact.candidates[0]
+          await deletePendingContact(chatId)
+          const pendingEv = await getPendingEvent(chatId)
+          if (pendingEv) {
+            pendingEv.attendees = [...(pendingEv.attendees ?? []), contact.email]
+            await savePendingEvent(chatId, pendingEv)
+            await sendMessage(chatId, `✅ *${contact.name}* יוזמן לאירוע "${pendingEv.title}".`)
+          } else {
+            await sendMessage(chatId, `✅ *${contact.name}* (${contact.email}) נשמר.`)
+          }
+        } else {
+          await deletePendingContact(chatId)
+          await sendMessage(chatId, "❌ בוטל.")
+        }
+        return NextResponse.json({ ok: true })
+      }
+      const pendingEdit = await getPendingEventEdit(chatId)
+      if (pendingEdit?.addEmails && isYes && user) {
+        const htmlLink = await updateCalendarEvent(user.refreshToken, pendingEdit.event!.calendarId, pendingEdit.event!.id, {
+          ...pendingEdit.changes,
+          addAttendeeEmails: pendingEdit.addEmails.map(a => a.email),
+        })
+        await deletePendingEventEdit(chatId)
+        const namesList = pendingEdit.addEmails.map(a => `*${a.name}*`).join(", ")
+        const linkStr = htmlLink ? ` [פתח](${htmlLink})` : ""
+        await sendMessage(chatId, `✅ *אירוע עודכן!*\n📅 *${pendingEdit.event!.summary}*\n👥 נוספו: ${namesList}${linkStr}`)
+        return NextResponse.json({ ok: true })
+      }
+      if (pendingEdit && isNo) {
+        await deletePendingEventEdit(chatId)
+        await sendMessage(chatId, "❌ עריכה בוטלה.")
+        return NextResponse.json({ ok: true })
+      }
+    }
+
     // ── Route everything else ───────────────────────────────────────────────
     const history = await getConversationHistory(chatId)
     const intent = await routeMessage(text, new Date(), history)
