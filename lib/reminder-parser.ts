@@ -79,7 +79,7 @@ export function isReminderMessage(text: string): boolean {
   if (/^(תזכיר|תזכרי|remind\s+me|תזכורת)/.test(lower)) return true
 
   // implicit: contains a relative-time phrase but no calendar-event keywords
-  const hasRelativeTime = /(?:עוד|בעוד)\s+\d+\s*(?:דקות?|דק'?|שעות?|ימים?|יום)|(?:עוד|בעוד)\s+(?:שעה|דקה|חצי\s+שעה|רבע\s+שעה)/.test(lower)
+  const hasRelativeTime = /(?:עוד|בעוד)\s+\d+\s*(?:דקות?|דק'?|שעות?|ימים?|יום)|(?:עוד|בעוד)\s+(?:שעה|שעתיים|דקה|יומיים|חצי\s+שעה|רבע\s+שעה)/.test(lower)
   if (hasRelativeTime && !EVENT_KEYWORDS.test(text)) return true
 
   return false
@@ -109,7 +109,9 @@ function parseTimeWithExpr(msg: string): { remindAt: Date | null; timeExpr: stri
     { re: /(?:in|בעוד|עוד)\s+(\d+)\s*(?:hours?|שעות?)/, fn: (m) => addMinutes(now, parseInt(m[1]) * 60) },
     { re: /(?:in|בעוד|עוד)\s+(\d+)\s*(?:days?|ימים?|יום)/, fn: (m) => addMinutes(now, parseInt(m[1]) * 60 * 24) },
     { re: /(?:עוד|בעוד)\s+דקה(?:\s|$)/, fn: () => addMinutes(now, 1) },
+    { re: /(?:עוד|בעוד)\s+שעתיים(?:\s|$)/, fn: () => addMinutes(now, 120) },
     { re: /(?:עוד|בעוד)\s+שעה(?:\s|$)/, fn: () => addMinutes(now, 60) },
+    { re: /(?:עוד|בעוד)\s+יומיים(?:\s|$)/, fn: () => addMinutes(now, 60 * 48) },
     { re: /(?:עוד|בעוד)\s+חצי\s+שעה/, fn: () => addMinutes(now, 30) },
     { re: /(?:עוד|בעוד)\s+רבע\s+שעה/, fn: () => addMinutes(now, 15) },
   ]
