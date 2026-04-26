@@ -15,6 +15,9 @@ import {
   renameGroup,
   savePendingGroup,
   getPendingGroup,
+  savePendingContact,
+  getPendingContact,
+  deletePendingContact,
   getUserLists,
   getList as getListItems,
 } from "@/lib/db"
@@ -179,6 +182,26 @@ function calendarKeyboard(calendars: { id: string; name: string }[]) {
   }
 }
 
+// ── Contact confirmation keyboard ─────────────────────────────────────────────
+
+function contactConfirmKeyboard() {
+  return {
+    inline_keyboard: [[
+      { text: "✅ אישור", callback_data: "contact_ok" },
+      { text: "🔄 החלף", callback_data: "contact_replace" },
+    ]],
+  }
+}
+
+function contactSelectKeyboard(candidates: { name: string; email: string }[]) {
+  return {
+    inline_keyboard: [
+      ...candidates.map((c, i) => [{ text: `${c.name} — ${c.email}`, callback_data: `contact_pick:${i}` }]),
+      [{ text: "❌ ביטול", callback_data: "contact_cancel" }],
+    ],
+  }
+}
+
 // ── Invite confirmation keyboard ──────────────────────────────────────────────
 
 function inviteKeyboard() {
@@ -280,6 +303,46 @@ async function handleCallback(update: any) {
       `👥 *קבוצה: ${groupName}*\n\n${memberLines}\n\n✅ ${removed.name} הוסר`,
       groupKeyboard(updated.members)
     )
+    return
+  }
+
+  // ── Contact confirmation ─────────────────────────────────────────────────
+  async function applyContact(contact: { name: string; email: string }) {
+    await deletePendingContact(chatId)
+    const pending = await getPendingEvent(chatId)
+    if (pending) {
+      pending.attendees = [...(pending.attendees ?? []), contact.email]
+      await savePendingEvent(chatId, pending)
+      await editMessage(chatId, messageId, `✅ *${contact.name}* יוזמן לאירוע "${pending.title}".`)
+    } else {
+      await editMessage(chatId, messageId, `✅ *${contact.name}* (${contact.email}) נשמר.`)
+    }
+  }
+
+  if (data === "contact_ok") {
+    const state = await getPendingContact(chatId)
+    if (!state?.candidates[0]) { await editMessage(chatId, messageId, "⏰ פג תוקף. נסה שוב."); return }
+    await applyContact(state.candidates[0])
+    return
+  }
+
+  if (data.startsWith("contact_pick:")) {
+    const idx = parseInt(data.replace("contact_pick:", ""), 10)
+    const state = await getPendingContact(chatId)
+    if (!state?.candidates[idx]) { await editMessage(chatId, messageId, "⏰ פג תוקף. נסה שוב."); return }
+    await applyContact(state.candidates[idx])
+    return
+  }
+
+  if (data === "contact_replace") {
+    await deletePendingContact(chatId)
+    await editMessage(chatId, messageId, "🔄 שלח: *תזמן [שם אחר]* עם השם המדויק.")
+    return
+  }
+
+  if (data === "contact_cancel") {
+    await deletePendingContact(chatId)
+    await editMessage(chatId, messageId, "❌ בוטל.")
     return
   }
 
@@ -647,19 +710,23 @@ export async function POST(req: NextRequest) {
 
       // "name" in intent is the type guard for invite_attendee (its unique property)
       if ("name" in intent && user) {
-        const pending = await getPendingEvent(chatId)
-        const contacts = await searchContacts(user.refreshToken, (intent as { name: string }).name)
+        const name = (intent as { name: string }).name
+        const contacts = await searchContacts(user.refreshToken, name)
         if (contacts.length === 0) {
-          await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n❌ לא נמצא איש קשר בשם "${(intent as { name: string }).name}".`)
+          await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n❌ לא נמצא איש קשר בשם "${name}".`)
           return NextResponse.json({ ok: true })
         }
-        const contact = contacts[0]
-        if (pending) {
-          pending.attendees = [...(pending.attendees ?? []), contact.email]
-          await savePendingEvent(chatId, pending)
-          await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n✅ ${contact.name} יוזמן לאירוע "${pending.title}".`)
+        await savePendingContact(chatId, { candidates: contacts })
+        if (contacts.length === 1) {
+          await sendMessage(chatId,
+            `🎤 _"${sanitized}"_\n\n📋 מצאתי:\n👤 *${contacts[0].name}*\n📧 ${contacts[0].email}\n\nזה הנכון?`,
+            contactConfirmKeyboard()
+          )
         } else {
-          await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n✅ ${contact.name} (${contact.email}) — אין אירוע ממתין.`)
+          await sendMessage(chatId,
+            `🎤 _"${sanitized}"_\n\n📋 מצאתי מספר תוצאות — בחר:`,
+            contactSelectKeyboard(contacts.slice(0, 5))
+          )
         }
         return NextResponse.json({ ok: true })
       }
@@ -722,19 +789,23 @@ export async function POST(req: NextRequest) {
 
     // ── Invite attendee (type guard via unique "name" property, avoids TS2367) ──
     if ("name" in intent && user) {
-      const pending = await getPendingEvent(chatId)
-      const contacts = await searchContacts(user.refreshToken, (intent as { name: string }).name)
+      const name = (intent as { name: string }).name
+      const contacts = await searchContacts(user.refreshToken, name)
       if (contacts.length === 0) {
-        await sendMessage(chatId, `❌ לא נמצא איש קשר בשם "${(intent as { name: string }).name}".`)
+        await sendMessage(chatId, `❌ לא נמצא איש קשר בשם "${name}".`)
         return NextResponse.json({ ok: true })
       }
-      const contact = contacts[0]
-      if (pending) {
-        pending.attendees = [...(pending.attendees ?? []), contact.email]
-        await savePendingEvent(chatId, pending)
-        await sendMessage(chatId, `✅ ${contact.name} יוזמן לאירוע "${pending.title}".`)
+      await savePendingContact(chatId, { candidates: contacts })
+      if (contacts.length === 1) {
+        await sendMessage(chatId,
+          `📋 מצאתי:\n👤 *${contacts[0].name}*\n📧 ${contacts[0].email}\n\nזה הנכון?`,
+          contactConfirmKeyboard()
+        )
       } else {
-        await sendMessage(chatId, `✅ ${contact.name} (${contact.email}) — אין אירוע ממתין להוסיף אליו.`)
+        await sendMessage(chatId,
+          `📋 מצאתי מספר תוצאות — בחר:`,
+          contactSelectKeyboard(contacts.slice(0, 5))
+        )
       }
       return NextResponse.json({ ok: true })
     }
@@ -868,11 +939,11 @@ export async function POST(req: NextRequest) {
           const suggestedAttendees = await resolveEventAttendees(user.refreshToken, chatId, text, summary)
           if (suggestedAttendees.length > 0) {
             await savePendingEvent(chatId, { ...parsed, suggestedAttendees, createdAt: Date.now() })
-            const nameList = suggestedAttendees.map(a => `*${a.name}*`).join(", ")
+            const nameList = suggestedAttendees.map(a => `*${a.name}* (${a.email})`).join("\n")
             await sendMessage(chatId,
               `📅 *${summary}*\n🗓 ${formatDate(`${datePart}T${startTime}:00`)}` +
               (location ? `\n📍 ${location}` : "") +
-              `\n\nלזמן גם את ${nameList}?`,
+              `\n\nלזמן גם את:\n${nameList}?`,
               inviteKeyboard()
             )
             return NextResponse.json({ ok: true })

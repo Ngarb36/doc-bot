@@ -301,6 +301,22 @@ export async function renameGroup(
   return true
 }
 
+export interface PendingContactState {
+  candidates: { name: string; email: string }[]
+}
+
+export async function savePendingContact(chatId: string | number, state: PendingContactState): Promise<void> {
+  await kv.set(`${P}pending_contact:${chatId}`, state, { ex: 3600 })
+}
+
+export async function getPendingContact(chatId: string | number): Promise<PendingContactState | null> {
+  return kv.get<PendingContactState>(`${P}pending_contact:${chatId}`)
+}
+
+export async function deletePendingContact(chatId: string | number): Promise<void> {
+  await kv.del(`${P}pending_contact:${chatId}`)
+}
+
 export async function savePendingGroup(chatId: string | number, groupName: string): Promise<void> {
   await kv.set(`${P}pending_group:${chatId}`, groupName, { ex: 3600 })
 }
