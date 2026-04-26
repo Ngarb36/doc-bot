@@ -14,11 +14,16 @@ async function sendReminderMessage(chatId: string, reminderId: string, text: str
       text,
       parse_mode: "Markdown",
       reply_markup: {
-        inline_keyboard: [[
-          { text: "✅ בוצע", callback_data: `rem_done:${reminderId}` },
-          { text: "😤 נודניק (+10)", callback_data: `rem_snooze10:${reminderId}` },
-          { text: "⏰ +שעה", callback_data: `rem_snooze60:${reminderId}` },
-        ]],
+        inline_keyboard: [
+          [
+            { text: "✅ בוצע", callback_data: `rem_done:${reminderId}` },
+            { text: "😤 +10 דק'", callback_data: `rem_snooze10:${reminderId}` },
+            { text: "⏰ +שעה", callback_data: `rem_snooze60:${reminderId}` },
+          ],
+          [
+            { text: "📅 מחר (24 שעות)", callback_data: `rem_snooze1440:${reminderId}` },
+          ],
+        ],
       },
     }),
   })
