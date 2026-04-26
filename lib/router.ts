@@ -28,7 +28,9 @@ export type Intent =
   | { action: "create_group"; groupName: string; memberNames: string[] }
   | { action: "add_to_group"; groupName: string; memberNames: string[] }
   | { action: "list_groups" }
+  | { action: "show_group"; groupName: string }
   | { action: "delete_group"; groupName: string }
+  | { action: "invite_attendee"; name: string }
   | { action: "unknown" }
 
 const URL_REGEX = /https?:\/\/[^\s]+/gi
@@ -94,8 +96,18 @@ export async function routeMessage(
     return { action: "show_all" }
   }
 
+  const inviteMatch = lower.match(/^(?:תזמן|תזמין)\s+(?:את\s+)?(.+)/)
+  if (inviteMatch) {
+    return { action: "invite_attendee", name: inviteMatch[1].trim() }
+  }
+
   if (/(?:הצג|מה|תראה)\s+(?:ה)?קבוצות?|מה\s+הקבוצות?/i.test(lower)) {
     return { action: "list_groups" }
+  }
+
+  const showGroupMatch = lower.match(/(?:הצג|תראה|פתח|ערוך)\s+(?:ה)?קבוצה\s+(.+)/i)
+  if (showGroupMatch) {
+    return { action: "show_group", groupName: showGroupMatch[1].trim() }
   }
 
   if (/(?:הצג|מה|תראה)\s+(?:ה)?תזכורות?|מה\s+התזכורות?/i.test(lower)) {

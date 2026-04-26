@@ -276,3 +276,39 @@ export async function addMembersToGroup(
   await saveGroup(chatId, updated)
   return updated
 }
+
+export async function removeMemberFromGroup(
+  chatId: string | number,
+  groupName: string,
+  memberEmail: string
+): Promise<ContactGroup | null> {
+  const group = await getGroup(chatId, groupName)
+  if (!group) return null
+  const updated: ContactGroup = { ...group, members: group.members.filter(m => m.email !== memberEmail) }
+  await saveGroup(chatId, updated)
+  return updated
+}
+
+export async function renameGroup(
+  chatId: string | number,
+  oldName: string,
+  newName: string
+): Promise<boolean> {
+  const group = await getGroup(chatId, oldName)
+  if (!group) return false
+  await deleteGroup(chatId, oldName)
+  await saveGroup(chatId, { ...group, name: newName })
+  return true
+}
+
+export async function savePendingGroup(chatId: string | number, groupName: string): Promise<void> {
+  await kv.set(`${P}pending_group:${chatId}`, groupName, { ex: 3600 })
+}
+
+export async function getPendingGroup(chatId: string | number): Promise<string | null> {
+  return kv.get<string>(`${P}pending_group:${chatId}`)
+}
+
+export async function deletePendingGroup(chatId: string | number): Promise<void> {
+  await kv.del(`${P}pending_group:${chatId}`)
+}

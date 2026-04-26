@@ -9,6 +9,12 @@ import {
   getReminder, updateReminder, deleteReminder,
   getUserReminders,
   getUserGroups,
+  getGroup,
+  deleteGroup,
+  removeMemberFromGroup,
+  renameGroup,
+  savePendingGroup,
+  getPendingGroup,
   getUserLists,
   getList as getListItems,
 } from "@/lib/db"
@@ -148,6 +154,20 @@ function reminderKeyboard(reminderId: string) {
   }
 }
 
+// ── Group management keyboard ─────────────────────────────────────────────────
+
+function groupKeyboard(members: { name: string; email: string }[]) {
+  const rows: { text: string; callback_data: string }[][] = [
+    [
+      { text: "✏️ שנה שם", callback_data: "grp_rename" },
+      { text: "🗑 מחק קבוצה", callback_data: "grp_del" },
+    ],
+    [{ text: "➕ הוסף איש קשר", callback_data: "grp_add" }],
+    ...members.map((m, i) => [{ text: `❌ ${m.name}`, callback_data: `grp_rm:${i}` }]),
+  ]
+  return { inline_keyboard: rows }
+}
+
 // ── Calendar selection keyboard ───────────────────────────────────────────────
 
 // Use index instead of full calendar ID — Telegram callback_data is capped at 64 bytes
@@ -220,6 +240,46 @@ async function handleCallback(update: any) {
       await updateReminder(remId, { remindAt: newTime })
       await editMessage(chatId, messageId, `📅 *תזכורת נדחתה ל-24 שעות*\n"${rem.message}"`)
     }
+    return
+  }
+
+  // ── Group management ────────────────────────────────────────────────────
+  if (data === "grp_del") {
+    const groupName = await getPendingGroup(chatId)
+    if (!groupName) { await editMessage(chatId, messageId, "⏰ פג תוקף. הצג את הקבוצה שוב."); return }
+    await deleteGroup(chatId, groupName)
+    await editMessage(chatId, messageId, `🗑 *קבוצה "${groupName}" נמחקה.*`)
+    return
+  }
+
+  if (data === "grp_rename") {
+    const groupName = await getPendingGroup(chatId)
+    if (!groupName) { await editMessage(chatId, messageId, "⏰ פג תוקף. הצג את הקבוצה שוב."); return }
+    await editMessage(chatId, messageId, `✏️ שלח: *שנה שם קבוצה ${groupName} ל-[שם חדש]*`)
+    return
+  }
+
+  if (data === "grp_add") {
+    const groupName = await getPendingGroup(chatId)
+    if (!groupName) { await editMessage(chatId, messageId, "⏰ פג תוקף. הצג את הקבוצה שוב."); return }
+    await editMessage(chatId, messageId, `➕ שלח: *הוסף [שם איש קשר] לקבוצה ${groupName}*`)
+    return
+  }
+
+  if (data.startsWith("grp_rm:")) {
+    const idx = parseInt(data.replace("grp_rm:", ""), 10)
+    const groupName = await getPendingGroup(chatId)
+    if (!groupName) { await editMessage(chatId, messageId, "⏰ פג תוקף. הצג את הקבוצה שוב."); return }
+    const group = await getGroup(chatId, groupName)
+    if (!group || !group.members[idx]) { await editMessage(chatId, messageId, "❌ לא נמצא איש הקשר."); return }
+    const removed = group.members[idx]
+    const updated = await removeMemberFromGroup(chatId, groupName, removed.email)
+    if (!updated) { await editMessage(chatId, messageId, "❌ שגיאה."); return }
+    const memberLines = updated.members.map(m => `• *${m.name}* — ${m.email}`).join("\n") || "_אין אנשי קשר_"
+    await editMessage(chatId, messageId,
+      `👥 *קבוצה: ${groupName}*\n\n${memberLines}\n\n✅ ${removed.name} הוסר`,
+      groupKeyboard(updated.members)
+    )
     return
   }
 
@@ -762,6 +822,22 @@ export async function POST(req: NextRequest) {
       } else {
         await sendMessage(chatId, `🗑 *נמחקו:*\n${deleted.map(d => `• ${d}`).join("\n")}`)
       }
+      return NextResponse.json({ ok: true })
+    }
+
+    // ── Show group with management keyboard ──────────────────────────────────
+    if (intent.action === "show_group") {
+      const group = await getGroup(chatId, intent.groupName)
+      if (!group) {
+        await sendMessage(chatId, `❌ לא נמצאה קבוצה בשם "${intent.groupName}".`)
+        return NextResponse.json({ ok: true })
+      }
+      await savePendingGroup(chatId, group.name)
+      const memberLines = group.members.map(m => `• *${m.name}* — ${m.email}`).join("\n") || "_אין אנשי קשר_"
+      await sendMessage(chatId,
+        `👥 *קבוצה: ${group.name}*\n\n${memberLines}`,
+        groupKeyboard(group.members)
+      )
       return NextResponse.json({ ok: true })
     }
 
