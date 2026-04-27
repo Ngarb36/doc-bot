@@ -145,7 +145,11 @@ export async function routeMessage(
 
   const addDailyMatch = lower.match(/(?:הוסף|תוסיף|רשום|תרשום|הוסיף)\s+(?:לי\s+)?(?:ל(?:רשימת\s+)?)?(?:המשימות?\s+(?:ל(?:ה)?יום|למחר)|משימות?\s+(?:ל(?:ה)?יום|למחר))\s*[:\-]?\s*(.+)/i)
   if (addDailyMatch) {
-    const items = addDailyMatch[1].split(/[,،\n]/).map((s: string) => s.trim()).filter(Boolean)
+    const ORDINAL_RE = /^(?:\d+\.?|אחד|שניים|שתיים|שלושה|שלוש|ארבעה|ארבע|חמישה|חמש|שישה|שש|שבעה|שבע|שמונה|תשעה|תשע|עשרה|עשר)\.?$/
+    const items = addDailyMatch[1]
+      .split(/[,،\n]/)
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length > 0 && !ORDINAL_RE.test(s))
     if (items.length > 0) return { action: "add_daily_tasks", items }
   }
 
@@ -251,7 +255,7 @@ Available actions:
 - list_groups: {}
 - delete_group: {groupName: "group name"}
 - edit_event: {query: "event title to find", date?: "YYYY-MM-DD", changes: {summary?: "new title", start?: "ISO datetime +03:00", end?: "ISO datetime +03:00", addAttendees?: ["name or group name"]}}
-- add_daily_tasks: {items: ["task1", "task2"]} — personal daily planning list (NOT Google Tasks)
+- add_daily_tasks: {items: ["task1", "task2"]} — personal daily planning list (NOT Google Tasks). IMPORTANT: ignore standalone ordinal separators like "אחד", "שתיים", "1.", "2." between task names — they are numbering, not tasks.
 - show_daily_tasks: {} — show today's/tomorrow's personal task list
 - done_daily_tasks: {indices?: [1,2], names?: ["task name"]} — mark personal daily tasks done
 - unknown: {}
