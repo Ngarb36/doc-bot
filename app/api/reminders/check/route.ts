@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getPendingReminders, updateReminder, deleteReminder, getDailyUsers, getDailyTasks, wasDailySent, markDailySent, getDailyNotificationTime } from "@/lib/db"
+import { getPendingReminders, updateReminder, deleteReminder, getDailyUsers, getDailyTasks, wasDailySent, markDailySent, getDailyNotificationTime, wasDayEndSent, markDayEndSent } from "@/lib/db"
 import { nextOccurrence } from "@/lib/reminder-parser"
 import type { DailyTask } from "@/lib/db"
 
@@ -25,6 +25,26 @@ async function sendReminderMessage(chatId: string, reminderId: string, text: str
             { text: "📅 מחר (24 שעות)", callback_data: `rem_snooze1440:${reminderId}` },
           ],
         ],
+      },
+    }),
+  })
+}
+
+async function sendDayEndMessage(chatId: string, tasks: DailyTask[]) {
+  const pending = tasks.filter(t => !t.done)
+  const lines = pending.map((t, i) => `${i + 1}. ${t.text}`)
+  await fetch(`${BASE_URL}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: `🌙 *סיכום יום — מה סיימת?*\n\n${lines.join("\n")}\n\n_מה שלא תסמן יועבר אוטומטית למחר_ ✅`,
+      parse_mode: "Markdown",
+      reply_markup: {
+        inline_keyboard: pending.map((t, i) => [{
+          text: `✅ ${i + 1}. ${t.text.slice(0, 40)}`,
+          callback_data: `daily_done:${t.id}`,
+        }]),
       },
     }),
   })
@@ -97,5 +117,18 @@ export async function GET(req: NextRequest) {
     dailySent++
   }
 
-  return NextResponse.json({ processed: pending.length, dailySent })
+  // ── End-of-day wrap-up at 19:30 Israel time ──────────────────────────────
+  let dayEndSent = 0
+  if (israelHour === 19 && nowMin >= 29 && nowMin <= 31) {
+    for (const userId of users) {
+      if (await wasDayEndSent(userId, dateStr)) continue
+      const tasks = await getDailyTasks(userId)
+      if (!tasks.some(t => !t.done)) continue
+      await sendDayEndMessage(userId, tasks)
+      await markDayEndSent(userId, dateStr)
+      dayEndSent++
+    }
+  }
+
+  return NextResponse.json({ processed: pending.length, dailySent, dayEndSent })
 }

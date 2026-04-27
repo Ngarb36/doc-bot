@@ -363,6 +363,14 @@ export async function setDailyNotificationTime(chatId: string | number, hour: nu
   await kv.sadd(`${P}daily_users`, String(chatId))
 }
 
+export async function wasDayEndSent(chatId: string | number, dateStr: string): Promise<boolean> {
+  return !!(await kv.get(`${P}dayend_sent:${chatId}:${dateStr}`))
+}
+
+export async function markDayEndSent(chatId: string | number, dateStr: string): Promise<void> {
+  await kv.set(`${P}dayend_sent:${chatId}:${dateStr}`, 1, { ex: 86400 * 2 })
+}
+
 // ── Pending event edits ────────────────────────────────────────────────────────
 
 export interface CalendarEventRef {
