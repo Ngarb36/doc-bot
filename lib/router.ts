@@ -32,6 +32,9 @@ export type Intent =
   | { action: "delete_group"; groupName: string }
   | { action: "invite_attendee"; name: string }
   | { action: "edit_event"; query: string; date?: string; changes: { summary?: string; start?: string; end?: string; addAttendees?: string[] } }
+  | { action: "add_daily_tasks"; items: string[] }
+  | { action: "show_daily_tasks" }
+  | { action: "done_daily_tasks"; indices?: number[]; names?: string[] }
   | { action: "unknown" }
 
 const URL_REGEX = /https?:\/\/[^\s]+/gi
@@ -135,6 +138,23 @@ export async function routeMessage(
     return { action: "remove_from_list", item: boughtMatch[1].trim() }
   }
 
+  // Daily tasks fast-paths (must come BEFORE Google Tasks check to avoid confusion)
+  if (/(?:מה|תראה|הצג)\s+(?:ה)?משימות?\s+(?:ל(?:ה)?יום|למחר|של\s+היום|של\s+מחר)/i.test(lower)) {
+    return { action: "show_daily_tasks" }
+  }
+
+  const addDailyMatch = lower.match(/(?:הוסף|תוסיף|רשום|תרשום|הוסיף)\s+(?:לי\s+)?(?:ל(?:רשימת\s+)?)?(?:המשימות?\s+(?:ל(?:ה)?יום|למחר)|משימות?\s+(?:ל(?:ה)?יום|למחר))\s*[:\-]?\s*(.+)/i)
+  if (addDailyMatch) {
+    const items = addDailyMatch[1].split(/[,،\n]/).map((s: string) => s.trim()).filter(Boolean)
+    if (items.length > 0) return { action: "add_daily_tasks", items }
+  }
+
+  const doneNumMatch = lower.match(/^(?:סיימתי|עשיתי|בוצע|מחק)\s+([\d,\s]+)$/)
+  if (doneNumMatch) {
+    const indices = doneNumMatch[1].split(/[,\s]+/).map((n: string) => parseInt(n.trim())).filter((n: number) => !isNaN(n))
+    if (indices.length > 0) return { action: "done_daily_tasks", indices }
+  }
+
   if (/(?:מה\s+(?:ה)?משימות|רשימת\s+מטלות|מה\s+יש\s+לי\s+לעשות|google\s+tasks|תראה.*משימות|הצג.*משימות)/i.test(lower)) {
     return { action: "list_tasks" }
   }
@@ -231,6 +251,9 @@ Available actions:
 - list_groups: {}
 - delete_group: {groupName: "group name"}
 - edit_event: {query: "event title to find", date?: "YYYY-MM-DD", changes: {summary?: "new title", start?: "ISO datetime +03:00", end?: "ISO datetime +03:00", addAttendees?: ["name or group name"]}}
+- add_daily_tasks: {items: ["task1", "task2"]} — personal daily planning list (NOT Google Tasks)
+- show_daily_tasks: {} — show today's/tomorrow's personal task list
+- done_daily_tasks: {indices?: [1,2], names?: ["task name"]} — mark personal daily tasks done
 - unknown: {}
 
 IMPORTANT date rules:
@@ -260,7 +283,11 @@ CRITICAL: "רשימת מטלות", "מטלות", "משימות", "tasks" always 
 - "לזימון/לאירוע X שנה שם ל-Y" → edit_event, changes.summary="Y"
 - "לזימון/לאירוע X שנה שעה ל-Y" → edit_event, changes.start (and end if given)
 - "לזימון/לאירוע X תזמן את Y / הוסף Y" → edit_event, changes.addAttendees=["Y"]
-- edit_event.query: event title only, no date/action words. date: YYYY-MM-DD if mentioned.`,
+- edit_event.query: event title only, no date/action words. date: YYYY-MM-DD if mentioned.
+- "הוסף/רשום משימות למחר/להיום: X, Y" → add_daily_tasks (items split by comma/newline)
+- "מה המשימות למחר/להיום / תראה משימות להיום" → show_daily_tasks
+- "סיימתי/עשיתי/בוצע [1,2] / [שם משימה]" → done_daily_tasks
+- IMPORTANT: "משימות להיום/למחר" → daily tasks (local list). "משימות" alone or "google tasks" → list_tasks (Google).`,
     messages,
   })
 

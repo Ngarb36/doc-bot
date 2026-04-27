@@ -27,6 +27,9 @@ import {
   getUserGroups,
   deleteGroup,
   addMembersToGroup,
+  getDailyTasks,
+  addDailyTask,
+  markDailyTaskDone,
 } from "./db"
 import type { Intent } from "./router"
 
@@ -326,6 +329,66 @@ export async function handleIntent(
     case "delete_group": {
       await deleteGroup(chatId, intent.groupName)
       return `🗑 קבוצת "${intent.groupName}" נמחקה.`
+    }
+
+    // ── Daily tasks ───────────────────────────────────────────────────────────
+    case "add_daily_tasks": {
+      for (const item of intent.items) {
+        await addDailyTask(chatId, item)
+      }
+      const tasks = await getDailyTasks(chatId)
+      const all = tasks.map((t, i) => `${t.done ? "✅" : `${i + 1}.`} ${t.text}`).join("\n")
+      return `📋 *נוסף לרשימת המשימות:*\n${intent.items.map(i => `• ${i}`).join("\n")}\n\n*הרשימה כעת:*\n${all}`
+    }
+
+    case "show_daily_tasks": {
+      const tasks = await getDailyTasks(chatId)
+      if (tasks.length === 0) return "📋 אין משימות ברשימה.\n\nכדי להוסיף: \"הוסף משימות למחר: X, Y, Z\""
+      const pending = tasks.filter(t => !t.done)
+      const done = tasks.filter(t => t.done)
+      const lines = [
+        ...pending.map((t, i) => `${i + 1}. ${t.text}`),
+        ...(done.length > 0 ? ["\n✅ *בוצעו:*", ...done.map(t => `✅ ${t.text}`)] : []),
+      ]
+      return `📋 *המשימות שלי:*\n\n${lines.join("\n")}`
+    }
+
+    case "done_daily_tasks": {
+      const tasks = await getDailyTasks(chatId)
+      if (tasks.length === 0) return "📋 אין משימות ברשימה."
+
+      const toMark: string[] = []
+
+      if (intent.indices?.length) {
+        const pending = tasks.filter(t => !t.done)
+        for (const idx of intent.indices) {
+          const task = pending[idx - 1]
+          if (task) toMark.push(task.id)
+        }
+      }
+
+      if (intent.names?.length) {
+        for (const name of intent.names) {
+          const found = tasks.find(t => !t.done && t.text.toLowerCase().includes(name.toLowerCase()))
+          if (found) toMark.push(found.id)
+        }
+      }
+
+      if (toMark.length === 0) return "לא מצאתי משימות לסימון. נסה לציין מספר (\"סיימתי 1, 2\") או שם."
+
+      let updated = tasks
+      for (const id of toMark) {
+        const result = await markDailyTaskDone(chatId, id)
+        if (result) updated = result
+      }
+
+      const stillPending = updated.filter(t => !t.done)
+      const nowDone = updated.filter(t => t.done)
+      const lines = [
+        ...stillPending.map((t, i) => `${i + 1}. ${t.text}`),
+        ...(nowDone.length > 0 ? ["\n✅ *בוצעו:*", ...nowDone.map(t => `✅ ${t.text}`)] : []),
+      ]
+      return `✅ *${toMark.length} משימה סומנה כבוצעה!*\n\n📋 *הרשימה:*\n${lines.join("\n")}`
     }
 
     // ── Connect ───────────────────────────────────────────────────────────────

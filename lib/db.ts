@@ -305,6 +305,55 @@ export interface PendingContactState {
   candidates: { name: string; email: string }[]
 }
 
+// ── Daily task list ───────────────────────────────────────────────────────────
+
+export interface DailyTask {
+  id: string
+  text: string
+  done: boolean
+  addedAt: number
+}
+
+export async function getDailyTasks(chatId: string | number): Promise<DailyTask[]> {
+  return (await kv.get<DailyTask[]>(`${P}daily:${chatId}`)) ?? []
+}
+
+export async function addDailyTask(chatId: string | number, text: string): Promise<void> {
+  const tasks = await getDailyTasks(chatId)
+  const task: DailyTask = { id: randomBytes(8).toString("hex"), text, done: false, addedAt: Date.now() }
+  await kv.set(`${P}daily:${chatId}`, [...tasks, task])
+  await kv.sadd(`${P}daily_users`, String(chatId))
+}
+
+export async function markDailyTaskDone(chatId: string | number, taskId: string): Promise<DailyTask[] | null> {
+  const tasks = await getDailyTasks(chatId)
+  if (!tasks.find(t => t.id === taskId)) return null
+  const updated = tasks.map(t => t.id === taskId ? { ...t, done: true } : t)
+  await kv.set(`${P}daily:${chatId}`, updated)
+  return updated
+}
+
+export async function clearDoneDailyTasks(chatId: string | number): Promise<void> {
+  const tasks = await getDailyTasks(chatId)
+  await kv.set(`${P}daily:${chatId}`, tasks.filter(t => !t.done))
+}
+
+export async function clearAllDailyTasks(chatId: string | number): Promise<void> {
+  await kv.del(`${P}daily:${chatId}`)
+}
+
+export async function getDailyUsers(): Promise<string[]> {
+  return (await kv.smembers<string[]>(`${P}daily_users`)) ?? []
+}
+
+export async function wasDailySent(chatId: string | number, dateStr: string): Promise<boolean> {
+  return !!(await kv.get(`${P}daily_sent:${chatId}:${dateStr}`))
+}
+
+export async function markDailySent(chatId: string | number, dateStr: string): Promise<void> {
+  await kv.set(`${P}daily_sent:${chatId}:${dateStr}`, 1, { ex: 86400 * 2 })
+}
+
 // ── Pending event edits ────────────────────────────────────────────────────────
 
 export interface CalendarEventRef {

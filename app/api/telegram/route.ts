@@ -23,6 +23,8 @@ import {
   deletePendingEventEdit,
   getUserLists,
   getList as getListItems,
+  getDailyTasks,
+  markDailyTaskDone,
 } from "@/lib/db"
 import type { CalendarEventRef } from "@/lib/db"
 import { routeMessage } from "@/lib/router"
@@ -238,6 +240,24 @@ function editAddKeyboard() {
   }
 }
 
+// ── Daily tasks helpers ───────────────────────────────────────────────────────
+
+function buildDailyTasksMessage(tasks: import("@/lib/db").DailyTask[]) {
+  const pending = tasks.filter(t => !t.done)
+  const done    = tasks.filter(t => t.done)
+  const lines = [
+    ...pending.map((t, i) => `${i + 1}. ${t.text}`),
+    ...(done.length > 0 ? ["\n✅ *בוצעו:*", ...done.map(t => `✅ ${t.text}`)] : []),
+  ]
+  const keyboard = pending.length > 0 ? {
+    inline_keyboard: pending.map((t, i) => [{
+      text: `✅ ${i + 1}. ${t.text.slice(0, 40)}`,
+      callback_data: `daily_done:${t.id}`,
+    }]),
+  } : undefined
+  return { text: `📋 *המשימות שלי:*\n\n${lines.join("\n")}`, keyboard }
+}
+
 // ── Callback query handler ────────────────────────────────────────────────────
 
 async function handleCallback(update: any) {
@@ -368,6 +388,17 @@ async function handleCallback(update: any) {
   if (data === "contact_cancel") {
     await deletePendingContact(chatId)
     await editMessage(chatId, messageId, "❌ בוטל.")
+    return
+  }
+
+  // ── Daily task done ─────────────────────────────────────────────────────
+  if (data.startsWith("daily_done:")) {
+    const taskId = data.replace("daily_done:", "")
+    const updated = await markDailyTaskDone(chatId, taskId)
+    if (!updated) { await answerCallback(query.id, "לא נמצאה משימה"); return }
+    const { text, keyboard } = buildDailyTasksMessage(updated)
+    await editMessage(chatId, messageId, text, keyboard)
+    await answerCallback(query.id, "✅ בוצע!")
     return
   }
 
