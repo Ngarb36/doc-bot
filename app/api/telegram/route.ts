@@ -124,6 +124,7 @@ async function transcribeVoice(fileId: string): Promise<string> {
   formData.append("file", new Blob([audioBuffer], { type: "audio/ogg" }), "voice.ogg")
   formData.append("model", "whisper-1")
   formData.append("language", "he")
+  formData.append("prompt", "תזכורת, יומן, פגישה, ישיבה, וובינר, זום, מיטינג, אירוע, משימה, רשימת קניות, להתקשר, לשלוח מייל, לקנות, לערוך, לכתוב, תזכיר לי, הוסף, קבע, תוציא זימון, קבוצה, גוגל")
 
   const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -839,14 +840,13 @@ export async function POST(req: NextRequest) {
 
       if (isReminderMessage(sanitized)) {
         const parsed = parseReminderText(sanitized)
-        if ("error" in parsed) {
-          await sendMessage(chatId, `⚠️ ${parsed.error}`)
-        } else {
+        if (!("error" in parsed)) {
           await addReminder(chatId, { message: parsed.message, remindAt: parsed.remindAt, recurrence: parsed.recurrence })
           const recStr = parsed.recurrence ? ` (חוזר)` : ""
           await sendMessage(chatId, `🎤 _"${sanitized}"_\n\n⏰ *תזכורת נשמרה!*\n"${parsed.message}"\n📅 ${formatDate(parsed.remindAt.toISOString())}${recStr}`)
+          return NextResponse.json({ ok: true })
         }
-        return NextResponse.json({ ok: true })
+        // Parser failed — fall through to routeMessage (Claude handles natural Hebrew time expressions)
       }
 
       const user = await getUser(chatId)
@@ -975,18 +975,17 @@ export async function POST(req: NextRequest) {
     // ── Reminder detection (deterministic parser) ───────────────────────────
     if (isReminderMessage(text)) {
       const parsed = parseReminderText(text)
-      if ("error" in parsed) {
-        await sendMessage(chatId, `⚠️ ${parsed.error}`)
-      } else {
-        const id = await addReminder(chatId, {
+      if (!("error" in parsed)) {
+        await addReminder(chatId, {
           message: parsed.message,
           remindAt: parsed.remindAt,
           recurrence: parsed.recurrence,
         })
         const recStr = parsed.recurrence ? ` (חוזר)` : ""
         await sendMessage(chatId, `⏰ *תזכורת נשמרה!*\n"${parsed.message}"\n📅 ${formatDate(parsed.remindAt.toISOString())}${recStr}`)
+        return NextResponse.json({ ok: true })
       }
-      return NextResponse.json({ ok: true })
+      // Parser failed — fall through to routeMessage (Claude handles natural Hebrew time expressions)
     }
 
     // ── Pending-state-aware confirmations ("כן"/"לא" before routeMessage) ────
