@@ -30,6 +30,7 @@ import {
   getDailyTasks,
   addDailyTask,
   markDailyTaskDone,
+  setDailyNotificationTime,
 } from "./db"
 import type { Intent } from "./router"
 
@@ -336,9 +337,15 @@ export async function handleIntent(
       for (const item of intent.items) {
         await addDailyTask(chatId, item)
       }
+      if (intent.notifyAt) {
+        await setDailyNotificationTime(chatId, intent.notifyAt.hour, intent.notifyAt.minute)
+      }
       const tasks = await getDailyTasks(chatId)
       const all = tasks.map((t, i) => `${t.done ? "✅" : `${i + 1}.`} ${t.text}`).join("\n")
-      return `📋 *נוסף לרשימת המשימות:*\n${intent.items.map(i => `• ${i}`).join("\n")}\n\n*הרשימה כעת:*\n${all}`
+      const timeNote = intent.notifyAt
+        ? `\n\n⏰ אשלח לך אותן ב-${String(intent.notifyAt.hour).padStart(2, "0")}:${String(intent.notifyAt.minute).padStart(2, "0")}`
+        : ""
+      return `📋 *נוסף לרשימת המשימות:*\n${intent.items.map(i => `• ${i}`).join("\n")}\n\n*הרשימה כעת:*\n${all}${timeNote}`
     }
 
     case "show_daily_tasks": {
@@ -389,6 +396,13 @@ export async function handleIntent(
         ...(nowDone.length > 0 ? ["\n✅ *בוצעו:*", ...nowDone.map(t => `✅ ${t.text}`)] : []),
       ]
       return `✅ *${toMark.length} משימה סומנה כבוצעה!*\n\n📋 *הרשימה:*\n${lines.join("\n")}`
+    }
+
+    case "set_daily_time": {
+      await setDailyNotificationTime(chatId, intent.hour, intent.minute)
+      const h = String(intent.hour).padStart(2, "0")
+      const m = String(intent.minute).padStart(2, "0")
+      return `✅ קבעתי! אשלח לך את המשימות כל יום ב-${h}:${m} 📋`
     }
 
     // ── Connect ───────────────────────────────────────────────────────────────

@@ -32,9 +32,10 @@ export type Intent =
   | { action: "delete_group"; groupName: string }
   | { action: "invite_attendee"; name: string }
   | { action: "edit_event"; query: string; date?: string; changes: { summary?: string; start?: string; end?: string; addAttendees?: string[] } }
-  | { action: "add_daily_tasks"; items: string[] }
+  | { action: "add_daily_tasks"; items: string[]; notifyAt?: { hour: number; minute: number } }
   | { action: "show_daily_tasks" }
   | { action: "done_daily_tasks"; indices?: number[]; names?: string[] }
+  | { action: "set_daily_time"; hour: number; minute: number }
   | { action: "unknown" }
 
 const URL_REGEX = /https?:\/\/[^\s]+/gi
@@ -146,11 +147,23 @@ export async function routeMessage(
   const addDailyMatch = lower.match(/(?:הוסף|תוסיף|רשום|תרשום|הוסיף)\s+(?:לי\s+)?(?:ל(?:רשימת\s+)?)?(?:המשימות?\s+(?:ל(?:ה)?יום|למחר)|משימות?\s+(?:ל(?:ה)?יום|למחר))\s*[:\-]?\s*(.+)/i)
   if (addDailyMatch) {
     const ORDINAL_RE = /^(?:\d+\.?|אחד|שניים|שתיים|שלושה|שלוש|ארבעה|ארבע|חמישה|חמש|שישה|שש|שבעה|שבע|שמונה|תשעה|תשע|עשרה|עשר)\.?$/
-    const items = addDailyMatch[1]
+    const TIME_PHRASE_RE = /(?:תזכיר|שלח|תשלח)\s+(?:לי\s+)?(?:ב-?|בשעה\s*)(\d{1,2})(?::(\d{2}))?/i
+    const rawText = addDailyMatch[1]
+    let notifyAt: { hour: number; minute: number } | undefined
+    const timeM = rawText.match(TIME_PHRASE_RE)
+    if (timeM) notifyAt = { hour: parseInt(timeM[1]), minute: parseInt(timeM[2] ?? "0") }
+    const items = rawText
       .split(/[,،\n]/)
       .map((s: string) => s.trim())
-      .filter((s: string) => s.length > 0 && !ORDINAL_RE.test(s))
-    if (items.length > 0) return { action: "add_daily_tasks", items }
+      .filter((s: string) => s.length > 0 && !ORDINAL_RE.test(s) && !TIME_PHRASE_RE.test(s))
+    if (items.length > 0) return { action: "add_daily_tasks", items, notifyAt }
+    if (notifyAt) return { action: "set_daily_time", ...notifyAt }
+  }
+
+  // set_daily_time standalone: "שלח לי המשימות ב-7" / "תזכיר לי את המשימות בשעה 8:30"
+  const setTimeMatch = lower.match(/(?:שלח|תשלח|תזכיר|הזכר)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:משימות?|רשימה)\s+(?:מחר\s+)?ב-?(?:שעה\s+)?(\d{1,2})(?::(\d{2}))?/i)
+  if (setTimeMatch) {
+    return { action: "set_daily_time", hour: parseInt(setTimeMatch[1]), minute: parseInt(setTimeMatch[2] ?? "0") }
   }
 
   const doneNumMatch = lower.match(/^(?:סיימתי|עשיתי|בוצע|מחק)\s+([\d,\s]+)$/)
@@ -255,9 +268,10 @@ Available actions:
 - list_groups: {}
 - delete_group: {groupName: "group name"}
 - edit_event: {query: "event title to find", date?: "YYYY-MM-DD", changes: {summary?: "new title", start?: "ISO datetime +03:00", end?: "ISO datetime +03:00", addAttendees?: ["name or group name"]}}
-- add_daily_tasks: {items: ["task1", "task2"]} — personal daily planning list (NOT Google Tasks). IMPORTANT: ignore standalone ordinal separators like "אחד", "שתיים", "1.", "2." between task names — they are numbering, not tasks.
+- add_daily_tasks: {items: ["task1", "task2"], notifyAt?: {hour: 7, minute: 0}} — personal daily planning list (NOT Google Tasks). IMPORTANT: ignore standalone ordinal separators like "אחד", "שתיים", "1.", "2." between task names — they are numbering, not tasks. If user mentions a notification time ("תזכיר לי ב-7", "שלח לי ב-8:30"), include notifyAt.
 - show_daily_tasks: {} — show today's/tomorrow's personal task list
 - done_daily_tasks: {indices?: [1,2], names?: ["task name"]} — mark personal daily tasks done
+- set_daily_time: {hour: 7, minute: 30} — set what time to receive the daily tasks notification
 - unknown: {}
 
 IMPORTANT date rules:
@@ -291,6 +305,7 @@ CRITICAL: "רשימת מטלות", "מטלות", "משימות", "tasks" always 
 - "הוסף/רשום משימות למחר/להיום: X, Y" → add_daily_tasks (items split by comma/newline)
 - "מה המשימות למחר/להיום / תראה משימות להיום" → show_daily_tasks
 - "סיימתי/עשיתי/בוצע [1,2] / [שם משימה]" → done_daily_tasks
+- "שלח לי המשימות ב-X / תזכיר לי את המשימות בשעה X" → set_daily_time
 - IMPORTANT: "משימות להיום/למחר" → daily tasks (local list). "משימות" alone or "google tasks" → list_tasks (Google).`,
     messages,
   })

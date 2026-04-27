@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getPendingReminders, updateReminder, deleteReminder, getDailyUsers, getDailyTasks, wasDailySent, markDailySent } from "@/lib/db"
+import { getPendingReminders, updateReminder, deleteReminder, getDailyUsers, getDailyTasks, wasDailySent, markDailySent, getDailyNotificationTime } from "@/lib/db"
 import { nextOccurrence } from "@/lib/reminder-parser"
 import type { DailyTask } from "@/lib/db"
 
@@ -76,26 +76,25 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── Daily tasks notification at 10:30 Israel time ─────────────────────────
+  // ── Daily tasks notification — per-user configurable time ─────────────────
+  const now = new Date()
   const israelHour = parseInt(new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Jerusalem", hour: "numeric", hour12: false,
-  }).format(new Date()))
-  const nowMin = new Date().getMinutes()
-  const isDailyWindow = israelHour === 10 && nowMin >= 29 && nowMin <= 31
+  }).format(now))
+  const nowMin = now.getMinutes()
+  const dateStr = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Jerusalem" })
+  const users = await getDailyUsers()
 
   let dailySent = 0
-  if (isDailyWindow) {
-    const dateStr = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Jerusalem" })
-    const users = await getDailyUsers()
-    for (const userId of users) {
-      if (await wasDailySent(userId, dateStr)) continue
-      const tasks = await getDailyTasks(userId)
-      const hasPending = tasks.some(t => !t.done)
-      if (!hasPending) continue
-      await sendDailyTasksMessage(userId, tasks)
-      await markDailySent(userId, dateStr)
-      dailySent++
-    }
+  for (const userId of users) {
+    const { hour, minute } = await getDailyNotificationTime(userId)
+    if (israelHour !== hour || nowMin < minute - 1 || nowMin > minute + 1) continue
+    if (await wasDailySent(userId, dateStr)) continue
+    const tasks = await getDailyTasks(userId)
+    if (!tasks.some(t => !t.done)) continue
+    await sendDailyTasksMessage(userId, tasks)
+    await markDailySent(userId, dateStr)
+    dailySent++
   }
 
   return NextResponse.json({ processed: pending.length, dailySent })
