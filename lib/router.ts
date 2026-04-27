@@ -140,10 +140,7 @@ export async function routeMessage(
   }
 
   // Daily tasks fast-paths (must come BEFORE Google Tasks check to avoid confusion)
-  if (/(?:מה|תראה|הצג)\s+(?:ה)?משימות?\s+(?:ל(?:ה)?יום|למחר|של\s+היום|של\s+מחר)/i.test(lower)) {
-    return { action: "show_daily_tasks" }
-  }
-
+  // Explicit adds come first so "הוסף משימות למחר: X" is caught before the show check
   const addDailyMatch = lower.match(/(?:הוסף|תוסיף|רשום|תרשום|הוסיף)\s+(?:לי\s+)?(?:ל(?:רשימת\s+)?)?(?:המשימות?\s+(?:ל(?:ה)?יום|למחר)|משימות?\s+(?:ל(?:ה)?יום|למחר))\s*[:\-]?\s*(.+)/i)
   if (addDailyMatch) {
     const ORDINAL_RE = /^(?:\d+\.?|אחד|שניים|שתיים|שלושה|שלוש|ארבעה|ארבע|חמישה|חמש|שישה|שש|שבעה|שבע|שמונה|תשעה|תשע|עשרה|עשר)\.?$/
@@ -160,6 +157,16 @@ export async function routeMessage(
     if (notifyAt) return { action: "set_daily_time", ...notifyAt }
   }
 
+  // Show daily tasks — any "משימות" query, unless explicitly Google Tasks
+  // Catches: "מה המשימות שלי למחר", "תראה משימות", "מה המשימות", "משימות להיום", standalone "משימות"
+  const isGoogleExplicit = /google\s*tasks?|גוגל\s*טסק/i.test(lower)
+  if (!isGoogleExplicit && (
+    /(?:מה|תראה|הצג|ראה)\s.{0,20}?משימות?/i.test(lower) ||
+    /^משימות?\b/i.test(lower)
+  )) {
+    return { action: "show_daily_tasks" }
+  }
+
   // set_daily_time standalone: "שלח לי המשימות ב-7" / "תזכיר לי את המשימות בשעה 8:30"
   const setTimeMatch = lower.match(/(?:שלח|תשלח|תזכיר|הזכר)\s+(?:לי\s+)?(?:את\s+)?(?:ה)?(?:משימות?|רשימה)\s+(?:מחר\s+)?ב-?(?:שעה\s+)?(\d{1,2})(?::(\d{2}))?/i)
   if (setTimeMatch) {
@@ -172,7 +179,7 @@ export async function routeMessage(
     if (indices.length > 0) return { action: "done_daily_tasks", indices }
   }
 
-  if (/(?:מה\s+(?:ה)?משימות|רשימת\s+מטלות|מה\s+יש\s+לי\s+לעשות|google\s+tasks|תראה.*משימות|הצג.*משימות)/i.test(lower)) {
+  if (/google\s*tasks?|גוגל\s*טסק|רשימת\s+מטלות|מה\s+יש\s+לי\s+לעשות/i.test(lower)) {
     return { action: "list_tasks" }
   }
 
@@ -286,14 +293,14 @@ IMPORTANT date rules:
 Intent classification hints (Hebrew):
 - "תוסיף/הוסף (ל)יומן / צור/קבע/תוציא פגישה/ישיבה/תור/מפגש/אירוע/זימון" → create_event (even for informal titles like דייט/ריצה/שינה)
 - "תזכיר לי / תזכורת" → add_reminder
-- "תוסיף/הוסף משימה / תוסיף לרשימת מטלות / מטלה חדשה / task" → add_task
-- "מה המשימות / רשימת מטלות / מה יש לי לעשות / google tasks / tasks" → list_tasks
+- "תוסיף/הוסף משימה (singular) / מטלה חדשה / add task to Google" → add_task (Google Tasks)
+- "google tasks / גוגל טסק / רשימת מטלות / מה יש לי לעשות" → list_tasks (Google Tasks)
 - "מה יש לי ביומן / אירועים / תראה לי את היומן" → list_events
 - "חפש בדרייב / drive" → search_drive
 - "תשלח מייל / שלח מייל" → send_email
 - "תראה מיילים / מה יש במייל / מיילים אחרונים" → read_emails
 
-CRITICAL: "רשימת מטלות", "מטלות", "משימות", "tasks" always → add_task or list_tasks, NEVER chat.
+CRITICAL: "משימות" alone or "מה המשימות" → show_daily_tasks (personal daily list). ONLY "google tasks"/"גוגל טסק"/"רשימת מטלות" → list_tasks. "הוסף/תוסיף משימה" (singular) → add_task.
 - "צור קבוצה / הוסף קבוצה" → create_group
 - "הוסף [שם] לקבוצה [X] / הכנס [שם] לקבוצה" → add_to_group
 - "הצג קבוצות / מה הקבוצות" → list_groups
@@ -303,10 +310,9 @@ CRITICAL: "רשימת מטלות", "מטלות", "משימות", "tasks" always 
 - "לזימון/לאירוע X תזמן את Y / הוסף Y" → edit_event, changes.addAttendees=["Y"]
 - edit_event.query: event title only, no date/action words. date: YYYY-MM-DD if mentioned.
 - "הוסף/רשום משימות למחר/להיום: X, Y" → add_daily_tasks (items split by comma/newline)
-- "מה המשימות למחר/להיום / תראה משימות להיום" → show_daily_tasks
+- "מה המשימות / מה המשימות שלי / משימות למחר / תראה משימות" → show_daily_tasks
 - "סיימתי/עשיתי/בוצע [1,2] / [שם משימה]" → done_daily_tasks
-- "שלח לי המשימות ב-X / תזכיר לי את המשימות בשעה X" → set_daily_time
-- IMPORTANT: "משימות להיום/למחר" → daily tasks (local list). "משימות" alone or "google tasks" → list_tasks (Google).`,
+- "שלח לי המשימות ב-X / תזכיר לי את המשימות בשעה X" → set_daily_time`,
     messages,
   })
 
