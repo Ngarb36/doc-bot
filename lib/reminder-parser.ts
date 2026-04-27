@@ -201,7 +201,8 @@ function extractTaskText(msg: string, timeExpr: string | null): string {
   if (timeExpr) {
     text = text.replace(new RegExp(escapeRegex(timeExpr), "i"), " ").replace(/\s+/g, " ").trim()
   }
-  text = text.replace(/^(?:ל|את|ה)\s+/i, "").trim()
+  // Strip standalone leading particles (ל / את / ה followed by space = separate word, not an infinitive prefix)
+  text = text.replace(/^(?:את|ה)\s+/i, "").trim()
   return text || msg
 }
 

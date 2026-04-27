@@ -233,7 +233,7 @@ Available actions:
 - chat: general conversation or questions
 - create_event: {summary: "event title only — if text says 'בשם X'/'קרא לו X'/'תקרא לו X' use X as summary. Do NOT include attendee names or groups.", start (ISO 8601 with time), end (ISO 8601 with time), attendees?: [emails], location?, description?}
 - list_events: {days: number}
-- add_reminder: {message: "reminder text", remindAt: "ISO 8601 datetime", recurrence?: "daily"|"weekly"|"monthly"}
+- add_reminder: {message: "full reminder text — KEEP the ל prefix on infinitive verbs (e.g. 'לקבוע משימות' not 'קבוע משימות', 'לשלוח מייל' not 'שלוח מייל')", remindAt: "ISO 8601 datetime", recurrence?: "daily"|"weekly"|"monthly"}
 - list_reminders: {}
 - add_task: {title, due?: "ISO date"}
 - list_tasks: {}
