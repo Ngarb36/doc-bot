@@ -333,6 +333,14 @@ export async function markDailyTaskDone(chatId: string | number, taskId: string)
   return updated
 }
 
+export async function removeDailyTask(chatId: string | number, taskId: string): Promise<DailyTask[] | null> {
+  const tasks = await getDailyTasks(chatId)
+  if (!tasks.find(t => t.id === taskId)) return null
+  const updated = tasks.filter(t => t.id !== taskId)
+  await kv.set(`${P}daily:${chatId}`, updated)
+  return updated
+}
+
 export async function clearDoneDailyTasks(chatId: string | number): Promise<void> {
   const tasks = await getDailyTasks(chatId)
   await kv.set(`${P}daily:${chatId}`, tasks.filter(t => !t.done))

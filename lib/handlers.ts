@@ -30,6 +30,7 @@ import {
   getDailyTasks,
   addDailyTask,
   markDailyTaskDone,
+  removeDailyTask,
   setDailyNotificationTime,
 } from "./db"
 import type { Intent } from "./router"
@@ -350,13 +351,9 @@ export async function handleIntent(
 
     case "show_daily_tasks": {
       const tasks = await getDailyTasks(chatId)
-      if (tasks.length === 0) return "📋 אין משימות ברשימה.\n\nכדי להוסיף: \"הוסף משימות למחר: X, Y, Z\""
       const pending = tasks.filter(t => !t.done)
-      const done = tasks.filter(t => t.done)
-      const lines = [
-        ...pending.map((t, i) => `${i + 1}. ${t.text}`),
-        ...(done.length > 0 ? ["\n✅ *בוצעו:*", ...done.map(t => `✅ ${t.text}`)] : []),
-      ]
+      if (pending.length === 0) return "📋 אין משימות פתוחות ברשימה.\n\nכדי להוסיף: \"הוסף משימות למחר: X, Y, Z\""
+      const lines = pending.map((t, i) => `${i + 1}. ${t.text}`)
       return `📋 *המשימות שלי:*\n\n${lines.join("\n")}`
     }
 
@@ -396,6 +393,26 @@ export async function handleIntent(
         ...(nowDone.length > 0 ? ["\n✅ *בוצעו:*", ...nowDone.map(t => `✅ ${t.text}`)] : []),
       ]
       return `✅ *${toMark.length} משימה סומנה כבוצעה!*\n\n📋 *הרשימה:*\n${lines.join("\n")}`
+    }
+
+    case "delete_daily_task": {
+      const tasks = await getDailyTasks(chatId)
+      const pending = tasks.filter(t => !t.done)
+      const toDelete: string[] = []
+      for (const idx of intent.indices) {
+        const task = pending[idx - 1]
+        if (task) toDelete.push(task.id)
+      }
+      if (toDelete.length === 0) return "לא מצאתי משימה במספר שציינת."
+      let updated = tasks
+      for (const id of toDelete) {
+        const result = await removeDailyTask(chatId, id)
+        if (result) updated = result
+      }
+      const remaining = updated.filter(t => !t.done)
+      if (remaining.length === 0) return "🗑 משימה נמחקה. הרשימה ריקה."
+      const lines = remaining.map((t, i) => `${i + 1}. ${t.text}`)
+      return `🗑 *משימה נמחקה.*\n\n📋 *הרשימה:*\n${lines.join("\n")}`
     }
 
     case "set_daily_time": {

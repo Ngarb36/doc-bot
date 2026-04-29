@@ -35,6 +35,7 @@ export type Intent =
   | { action: "add_daily_tasks"; items: string[]; notifyAt?: { hour: number; minute: number } }
   | { action: "show_daily_tasks" }
   | { action: "done_daily_tasks"; indices?: number[]; names?: string[] }
+  | { action: "delete_daily_task"; indices: number[] }
   | { action: "set_daily_time"; hour: number; minute: number }
   | { action: "unknown" }
 
@@ -128,10 +129,16 @@ export async function routeMessage(
     return { action: "list_reminders" }
   }
 
-  const deleteReminderMatch = lower.match(/^מחק\s+([\d,\s]+)$/)
+  const deleteReminderMatch = lower.match(/^מחק\s+תזכורת\s+([\d,\s]+)$/)
   if (deleteReminderMatch) {
     const indices = deleteReminderMatch[1].split(/[,\s]+/).map(n => parseInt(n.trim())).filter(n => !isNaN(n))
     return { action: "delete_reminders", indices }
+  }
+
+  const deleteDailyMatch = lower.match(/^מחק\s+([\d,\s]+)$/)
+  if (deleteDailyMatch) {
+    const indices = deleteDailyMatch[1].split(/[,\s]+/).map(n => parseInt(n.trim())).filter(n => !isNaN(n))
+    return { action: "delete_daily_task", indices }
   }
 
   const boughtMatch = lower.match(/^(?:קניתי|רכשתי|לקחתי)\s+(.+)/)
@@ -173,7 +180,7 @@ export async function routeMessage(
     return { action: "set_daily_time", hour: parseInt(setTimeMatch[1]), minute: parseInt(setTimeMatch[2] ?? "0") }
   }
 
-  const doneNumMatch = lower.match(/^(?:סיימתי|עשיתי|בוצע|מחק)\s+([\d,\s]+)$/)
+  const doneNumMatch = lower.match(/^(?:סיימתי|עשיתי|בוצע)\s+([\d,\s]+)$/)
   if (doneNumMatch) {
     const indices = doneNumMatch[1].split(/[,\s]+/).map((n: string) => parseInt(n.trim())).filter((n: number) => !isNaN(n))
     if (indices.length > 0) return { action: "done_daily_tasks", indices }
