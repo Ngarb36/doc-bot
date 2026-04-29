@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getPendingReminders, updateReminder, deleteReminder, getDailyUsers, getDailyTasks, wasDailySent, markDailySent, getDailyNotificationTime, wasDayEndSent, markDayEndSent } from "@/lib/db"
+import { getPendingReminders, updateReminder, deleteReminder, getDailyUsers, getDailyTasks, clearDoneDailyTasks, wasDailySent, markDailySent, getDailyNotificationTime, wasDayEndSent, markDayEndSent } from "@/lib/db"
 import { nextOccurrence } from "@/lib/reminder-parser"
 import type { DailyTask } from "@/lib/db"
 
@@ -110,8 +110,9 @@ export async function GET(req: NextRequest) {
     const { hour, minute } = await getDailyNotificationTime(userId)
     if (israelHour !== hour || nowMin < minute - 1 || nowMin > minute + 1) continue
     if (await wasDailySent(userId, dateStr)) continue
+    await clearDoneDailyTasks(userId)
     const tasks = await getDailyTasks(userId)
-    if (!tasks.some(t => !t.done)) continue
+    if (tasks.length === 0) continue
     await sendDailyTasksMessage(userId, tasks)
     await markDailySent(userId, dateStr)
     dailySent++
