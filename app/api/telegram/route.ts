@@ -558,7 +558,12 @@ async function handleImageEvent(chatId: number, photo: any[], caption: string, r
 async function confirmOrCreateEvent(chatId: number, parsed: any, refreshToken: string) {
   const { startDateTime } = buildISODateTimes(parsed)
 
-  const calendars = await listUserCalendars(refreshToken)
+  let calendars: { id: string; name: string }[]
+  try {
+    calendars = await listUserCalendars(refreshToken)
+  } catch {
+    calendars = [{ id: "primary", name: "יומן ראשי" }]
+  }
 
   // Save calendar IDs alongside the event so the callback can look them up by index
   await savePendingEvent(chatId, {

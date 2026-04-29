@@ -226,7 +226,7 @@ Return exactly: {"action":"add_task","title":"<task title>","due":"<ISO date YYY
 
   // Calendar creation — catch "תוסיף/הוסף/קבע ליומן" patterns with a focused Claude call
   // so that event titles like "דייט", "ריצה", "שינה" are never misclassified as chat
-  const isCalCreate = /(?:(?:תוסיף|הוסף|קבע|תקבע|צור|תצור|שים|רשום|תרשום|הכנס|קבוע|שמור|תוציא|הוצא)\s+(?:לי\s+)?(?:(?:ל(?:ה)?)?יומן|זימון))|(?:יומן[:\s])|(?:פגישה|ישיבה|תור|מפגש|אירוע|דייט|ריצה|אימון|ארוחה|זימון)\s+(?:מחר|היום|ב-?\d|ב(?:יום|שעה))/i.test(lower)
+  const isCalCreate = /(?:(?:תוסיף|הוסף|קבע|תקבע|צור|תצור|שים|רשום|תרשום|הכנס|קבוע|שמור|תוציא|הוצא)\s+(?:לי\s+)?(?:(?:ל(?:ה)?)?יומן|זימון))|(?:יומן[:\s])|(?:פגישה|ישיבה|תור|מפגש|אירוע|דייט|ריצה|אימון|ארוחה|זימון)\s+(?:מחר|היום|ב-?\d|ב(?:יום|שעה))|(?:תזמן\s+(?!את\b)(?:ביום|בשעה|מחר|היום|ב-?\d))/i.test(lower)
   if (isCalCreate) {
     const response2 = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
